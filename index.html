@@ -164,9 +164,12 @@
         <div class="action-grid"><button id="key-bone" type="button" class="button violet">◆ Ключ кости</button><button id="key-pose" type="button" class="button cyan">◇ Вся поза</button><button id="delete-key" type="button" class="button outline">⌫ Удалить ключ</button><button id="clear-keys" type="button" class="button outline">↺ Очистить ключи</button><button id="copy-pose" type="button" class="button outline">▣ Копировать позу</button><button id="paste-pose" type="button" class="button outline">▤ Вставить позу</button></div>
       </section>
       <section class="panel save-panel">
-        <h3><span class="badge-number">06</span> Сохранение GLB</h3>
-        <button id="save-glb" type="button" class="button cyan full-width prominent">▣ СОХРАНИТЬ АНИМАЦИЮ</button>
-        <p id="save-info" class="save-info">Модели со скелетом сохраняются с совместимыми анимациями. Модели без скелета можно сохранить как обычный GLB.</p>
+        <h3><span class="badge-number">06</span> Экспорт персонажа</h3>
+        <div class="export-choices">
+          <button id="save-glb" type="button" class="button cyan full-width prominent">▣ СОХРАНИТЬ GLB</button>
+          <button id="save-fbx" type="button" class="button violet full-width prominent">▣ СОХРАНИТЬ FBX</button>
+        </div>
+        <p id="save-info" class="save-info">GLB — основной формат игры. FBX — двоичный 7.4 для Blender и совместимых редакторов; кости, веса и анимации сохраняются. Для старых версий Mixamo, требующих FBX 2013, совместимость не гарантируется.</p>
         <p class="hint">Всё обрабатывается на устройстве · без облака.</p>
       </section>
     </aside>

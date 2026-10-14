@@ -68,3 +68,8 @@
 .skin-bind-panel .button.cyan{white-space:normal;min-height:46px;letter-spacing:.25px}
 .fit-backup-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
 .fit-backup-row button{min-height:36px;white-space:normal;padding:6px;font-size:10px}
+
+/* Offline model export in GLB and FBX, touch-sized controls. */
+.export-choices{display:grid;gap:9px;margin-bottom:10px}
+.export-choices .prominent{min-height:47px;font-size:12px}
+.export-choices .button.violet{border-color:#cf74f8;background:linear-gradient(120deg,#532974,#96399d)}

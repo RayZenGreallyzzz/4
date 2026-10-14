@@ -8,6 +8,7 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 import { FPS, MAX_FRAMES, Timeline, boneLookup, compileClip, clampFrame } from './timeline.js';
 import { JOINTS, createGuide, jointWorld, moveJointWorld, serializeFit, restoreFit, addGuideChain, removeGuideChain } from './autorig.js';
 import { bindRigToMeshes } from './skinning.js';
+import { exportFbxBinary, countVertices } from './fbx.js';
 import { fitGuideToGeometry } from './bodyfit.js';
 import './style.css';
 
@@ -834,7 +835,7 @@ function refreshControls() {
   const ready = !!state.root && !state.busy;
   const rigged = ready && state.bones.length > 0;
   const hasAnimation = ready && (state.sourceIndex >= 0 || state.timeline.count > 0);
-  for(const id of ['save-glb','stop','to-start','to-end','step-minus','step-plus',
+  for(const id of ['save-glb','save-fbx','stop','to-start','to-end','step-minus','step-plus',
     'clip-name','duration','seek']) $(id).disabled = !ready;
   for(const id of ['key-bone','key-pose','copy-pose','clear-keys'])
     $(id).disabled = !rigged;
@@ -934,7 +935,9 @@ function browserDownload(bytes,name,mime) {
   setTimeout(()=>URL.revokeObjectURL(url),60000);
 }
 async function saveFile(buffer,name,mime,progress=()=>{}) {
-  const data=buffer instanceof ArrayBuffer ? new Uint8Array(buffer) : new TextEncoder().encode(String(buffer));
+  const data=buffer instanceof ArrayBuffer ? new Uint8Array(buffer)
+    : buffer instanceof Uint8Array ? buffer
+    : new TextEncoder().encode(String(buffer));
   if(Capacitor.getPlatform()==='android'&&Capacitor.isNativePlatform()){
     await NativeFileSaver.beginFile({filename:name,mimeType:mime});
     try{
@@ -959,10 +962,13 @@ async function saveFile(buffer,name,mime,progress=()=>{}) {
   if(typeof window.showSaveFilePicker==='function'){
     try{
       const isJson=name.toLowerCase().endsWith('.json');
+      const isFbx=name.toLowerCase().endsWith('.fbx');
       const h=await window.showSaveFilePicker({
         suggestedName:name,types:[isJson
           ? {description:'JSON',accept:{'application/json':['.json']}}
-          : {description:'3D GLB',accept:{'model/gltf-binary':['.glb']}}]
+          : isFbx
+            ? {description:'Autodesk FBX',accept:{'application/octet-stream':['.fbx']}}
+            : {description:'3D GLB',accept:{'model/gltf-binary':['.glb']}}]
       });
       const out=await h.createWritable();
       await out.write(data);await out.close();
@@ -1043,6 +1049,64 @@ async function exportGLB() {
   }
 }
 
+
+async function exportFBX() {
+  if(!state.root || state.busy)return;
+  if(state.rigGuide && !state.rigBound){
+    alertUser('Сначала привяжи модель к скелету в AutoSkin — иначе кости не будут управлять телом.');
+    return;
+  }
+  const vertices=countVertices(state.root);
+  if(vertices>350000 && !window.confirm(
+    'Модель содержит '+vertices.toLocaleString('ru-RU')+
+    ' вершин. Экспорт FBX с текстурами может потребовать много оперативной памяти. '+
+    'Рекомендуется сохранить GLB перед операцией. Продолжить?'))return;
+  state.busy=true;
+  const wasPlaying=state.playing;
+  state.playing=false;
+  refreshControls();
+  report('FBX ЭКСПОРТ');
+  $('save-info').textContent='Подготавливаем FBX 7.4 (2014/2015). Это может занять время…';
+  try{
+    await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+    const clips=state.sourceClips.slice();
+    if(state.bones.length && (state.timeline.count||state.sourceIndex>=0)){
+      const edited=exportClip();
+      if(state.sourceIndex<0)clips.push(edited);
+      else clips[state.sourceIndex]=edited;
+    }
+    const bytes=await exportFbxBinary(state.root,clips.filter(c=>c?.tracks?.length));
+    const name=(state.modelName||'character').replace(/\.[^.]+$/,'')
+      .replace(/[^\p{L}\p{N}_-]+/gu,'_').slice(0,55)+
+      (state.bones.length?'_rigged.fbx':'_model.fbx');
+    $('save-info').textContent='FBX 7.4 создан ('+(bytes.byteLength/1048576).toFixed(1)+
+      ' МБ). Выбери место сохранения.';
+    const result=await saveFile(bytes,name,'application/octet-stream',percent=>{
+      $('save-info').textContent=percent===100?'Открываем выбор папки для FBX…':
+        'Записываем FBX: '+percent+'%';
+    });
+    if(result.saved){
+      $('save-info').textContent='FBX 7.4 сохранён. Проверь импорт в Blender. FBX 2013 для старого Mixamo пока не поддерживается.';
+      alertUser('Настоящий FBX сохранён!');
+    }else if(result.cancelled){
+      $('save-info').textContent='Сохранение FBX отменено; модель осталась в редакторе.';
+      alertUser('Сохранение FBX отменено');
+    }else{
+      $('save-info').textContent='FBX передан браузеру для скачивания.';
+      alertUser('FBX отправлен в загрузки');
+    }
+  }catch(error){
+    console.error('FBX export',error);
+    $('save-info').textContent='Ошибка экспорта FBX: '+(error?.message||String(error));
+    alertUser('FBX не сохранён: '+(error?.message||String(error)));
+  }finally{
+    if(state.root)preview(state.frame);
+    state.busy=false;
+    state.playing=wasPlaying;
+    report('ГОТОВО');
+    refreshControls();
+  }
+}
 function closeMenu() {$('welcome').classList.add('hidden');}
 function openMenu() {$('welcome').classList.remove('hidden');}
 
@@ -1189,6 +1253,7 @@ $('show-bones').addEventListener('change',e=>{
 });
 $('show-grid').addEventListener('change',e=>grid.visible=e.target.checked);
 onButton('save-glb',exportGLB);
+onButton('save-fbx',exportFBX);
 
 function resize(){
   const v=$('viewport');
