@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
+  <meta name="theme-color" content="#090d1a"/>
+  <title>Animation Studio</title>
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <div class="brand"><div class="brand-mark">♛</div><div><strong>ANIMATION <em>STUDIO</em></strong><small>OFFLINE 3D ANIMATION EDITOR</small></div></div>
+    <div class="top-actions"><span id="file-label">Файл не выбран</span><button id="show-menu" class="toolbar-button" type="button">⌂ Меню</button><button id="toolbar-open" type="button" class="toolbar-button primary">＋ Модель</button></div>
+  </header>
+
+  <main class="workspace">
+    <section class="viewport-section">
+      <div id="viewport">
+        <div class="viewport-decor"><span>● ANIMATION STUDIO</span><span>3D VIEWPORT</span></div>
+        <div id="empty-view" class="empty-view"><div class="empty-symbol">◇</div><h2>Открой персонажа</h2><p>GLB, GLTF или FBX со скелетом</p><button type="button" class="button cyan" onclick="document.getElementById('model-file').click()">＋ Загрузить модель</button></div>
+        <div class="viewport-toolbar"><button id="camera-frame" class="square-tool" title="Показать всю модель">◎</button><label class="toggle-line"><input type="checkbox" id="show-bones" checked/> Кости</label><label class="toggle-line"><input type="checkbox" id="show-grid" checked/> Сетка</label></div>
+        <div class="viewport-footer"><span>◈ Вращение: 1 палец</span><span>◆ Масштаб: 2 пальца</span></div>
+      </div>
+
+      <section class="timeline-panel">
+        <div class="timeline-head"><div class="timeline-heading"><span class="badge-number">01</span><h2>ТАЙМЛАЙН</h2><span class="fps">30 FPS</span></div><span id="keys-summary">0 ключей</span></div>
+        <div class="transport">
+          <button id="to-start" title="Первый кадр">|◀</button><button id="step-minus" title="Кадр назад">◀</button><button id="play" class="transport-play">▶ Играть</button><button id="step-plus" title="Кадр вперёд">▶</button><button id="to-end" title="Последний кадр">▶|</button><button id="stop" title="Стоп">■</button>
+          <div class="time-display"><strong id="current-frame">0</strong><span>/</span><span id="total-frame">90</span><small>КАДРОВ</small></div>
+        </div>
+        <div class="seek-wrap"><div class="ruler"><span>00:00</span><span id="current-time">0.00</span><span> / <span id="total-time">3.00</span> с</span></div><input type="range" id="seek" min="0" max="90" step="1" value="0" aria-label="Текущий кадр"/><div id="markers" class="markers" aria-label="Добавленные ключи"></div></div>
+        <div class="timeline-options"><label>Скорость <select id="play-speed"><option value=".25">0.25×</option><option value=".5">0.5×</option><option value="1" selected>1×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label><label class="toggle-line"><input type="checkbox" id="repeat" checked/> Повторять</label><span id="selected-keys" class="keys-mini">0 ключей у кости</span></div>
+      </section>
+    </section>
+
+    <aside class="sidebar">
+      <div class="editor-label"><strong>РЕДАКТОР АНИМАЦИЙ</strong><span id="status">● ГОТОВО</span></div>
+      <section class="panel">
+        <h3><span class="badge-number">02</span> Проект и анимация</h3>
+        <label class="field-label" for="clip-select">Клип персонажа</label><select id="clip-select" class="full-width"></select>
+        <div class="two-fields"><label>Название<input id="clip-name" maxlength="70" value="New Animation" /></label><label>Кадров<input id="duration" type="number" min="1" max="1200" value="90"/></label></div>
+        <button id="new-clip" type="button" class="button outline full-width">✦ Новая анимация</button>
+      </section>
+      <section class="panel bones-panel">
+        <h3><span class="badge-number">03</span> Скелет <small id="bones-count">0 / 0</small></h3>
+        <input id="bone-search" type="search" placeholder="⌕ Найти кость — arm, hand, head…" class="full-width"/>
+        <div id="bone-list" class="bone-list"></div>
+      </section>
+      <section class="panel">
+        <h3><span class="badge-number">04</span> Поворот сустава</h3>
+        <p id="bone-title" class="bone-title">Выбери кость</p>
+        <div class="angles">
+          <label class="axis axis-x"><b>X</b><input id="rotate-x" type="range" min="-180" max="180" step="1" value="0"/><input id="angle-x" type="number" min="-180" max="180" step=".1" value="0"/><small>°</small></label>
+          <label class="axis axis-y"><b>Y</b><input id="rotate-y" type="range" min="-180" max="180" step="1" value="0"/><input id="angle-y" type="number" min="-180" max="180" step=".1" value="0"/><small>°</small></label>
+          <label class="axis axis-z"><b>Z</b><input id="rotate-z" type="range" min="-180" max="180" step="1" value="0"/><input id="angle-z" type="number" min="-180" max="180" step=".1" value="0"/><small>°</small></label>
+        </div>
+        <p class="hint">Изменение угла автоматически записывает ключ на текущем кадре.</p>
+      </section>
+      <section class="panel">
+        <h3><span class="badge-number">05</span> Ключевые кадры</h3>
+        <div class="action-grid"><button id="key-bone" type="button" class="button violet">◆ Ключ кости</button><button id="key-pose" type="button" class="button cyan">◇ Вся поза</button><button id="delete-key" type="button" class="button outline">⌫ Удалить ключ</button><button id="clear-keys" type="button" class="button outline">↺ Очистить ключи</button><button id="copy-pose" type="button" class="button outline">▣ Копировать позу</button><button id="paste-pose" type="button" class="button outline">▤ Вставить позу</button></div>
+      </section>
+      <section class="panel save-panel">
+        <h3><span class="badge-number">06</span> Сохранение GLB</h3>
+        <button id="save-glb" type="button" class="button cyan full-width prominent">▣ СОХРАНИТЬ АНИМАЦИЮ</button>
+        <p id="save-info" class="save-info">Модель, ключи и совместимые анимации сохраняются в GLB. Android предложит выбрать папку и имя.</p>
+        <p class="hint">Всё обрабатывается на устройстве · без облака.</p>
+      </section>
+    </aside>
+  </main>
+</div>
+
+<div id="welcome" class="welcome">
+  <div class="welcome-art">
+    <div class="welcome-title"><span class="crown">♛</span><h1>ANIMATION<br/><em>STUDIO</em></h1><span class="tagline">CREATE MOVEMENT · OFFLINE</span></div>
+    <div class="welcome-crown">♛</div>
+    <div class="paint-overlay"></div>
+  </div>
+  <div class="welcome-menu">
+    <p class="overline">NEW GENERATION • 3D WORKSHOP</p>
+    <h2>Твоя студия<br/>анимаций.</h2>
+    <p class="welcome-intro">Оживляй персонажей. Создавай движения по ключам. Сохраняй в GLB прямо на планшете.</p>
+    <button id="menu-open-model" class="menu-entry main-entry" type="button"><span class="menu-icon">◈</span><span><strong>ОТКРЫТЬ МОДЕЛЬ</strong><small>GLB · GLTF · FBX</small></span><span>→</span></button>
+    <button id="menu-start" class="menu-entry" type="button"><span class="menu-icon">✦</span><span><strong>НОВЫЙ ПРОЕКТ</strong><small>Перейти в редактор</small></span><span>→</span></button>
+    <button id="menu-editor" class="menu-entry" type="button"><span class="menu-icon">▤</span><span><strong>РЕДАКТОР И ТАЙМЛАЙН</strong><small>Ключи · кости · анимации</small></span><span>→</span></button>
+    <button id="menu-about" class="menu-entry secondary" type="button"><span class="menu-icon">ⓘ</span><span><strong>О ПРИЛОЖЕНИИ</strong><small>Версия 0.1 · 30 FPS</small></span><span>⌄</span></button>
+    <p id="welcome-info" class="welcome-info hidden">Animation Studio — локальный редактор скелетных анимаций для Android и ПК. Поддерживает ручную запись поз, воспроизведение и экспорт GLB. Не требует аккаунтов.</p>
+    <button id="menu-dismiss" class="menu-dismiss">Перейти в студию →</button>
+  </div>
+</div>
+<div id="loading-overlay" class="loading-overlay hidden"><div class="loading-card"><div class="loading-crown">♛</div><strong>ANIMATION STUDIO</strong><p>Загружаем 3D-модель</p><small id="loading-name"></small><div class="loading-track"><div></div></div></div></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<input id="model-file" type="file" accept=".glb,.gltf,.fbx,.bin,.png,.jpg,.jpeg,.webp" multiple hidden/>
+<script type="module" src="/src/main.js"></script>
+</body></html>
