@@ -58,3 +58,7 @@ AutoRig no longer uses only overall Box3 bounds to position the central spine. O
 Different GLB/FBX characters can face +Z, -Z, +X or -X. Use **Направление персонажа** and **Пересчитать скелет по модели** if the guessed front is incorrect. This explicitly overwrites previous manual main-skeleton fitting with user confirmation; extra chains remain attached.
 
 The torso approximation is *not automatic anatomy recognition*. It is a more reliable starting location. Shoulder, knee and wrist positions still need manual review, especially on non-standard outfits. The original mesh is unchanged and skin weights are still not generated.
+
+## Snap joint to actual geometry (v0.6)
+
+For precise manual correction after torso fitting, select a joint, press **Поставить сустав касанием тела**, then tap the target elbow/knee/shoulder on the 3D model. The app raycasts against the model's mesh surfaces, calculates a point slightly inside the first surface hit and moves the selected skeleton joint there. Small body parts use a shallower inset. This avoids having to scroll and manually enter world coordinates for every joint. The interaction automatically exits after a valid mesh hit; pressing the same button cancels it. It does not estimate skin weights.

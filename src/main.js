@@ -60,7 +60,7 @@ const state = {
   clipName: 'New Animation', clipboard: null, busy: false, loading: false,
   rafStamp: 0, frameCarry: 0, toastTimer: null,
   rigGuide:null, rigVisual:null, rigMarkers:[], rigSelected:'mixamorigHips',
-  rigEnabled:true, rigEditMode:'touch'
+  rigEnabled:true, rigEditMode:'touch', rigSnapMode:false
 };
 const alertUser = msg => {
   const e = $('toast');
@@ -104,6 +104,7 @@ function disposeModel() {
 
 // AutoRig stage 1: fit guide only, intentionally not an animated/weighted mesh.
 function disposeRigGuide() {
+  state.rigSnapMode=false;
   rigTransform.detach();
   rigTransform.getHelper().visible=false;
   if (state.rigVisual) {
@@ -133,6 +134,11 @@ function refreshRigFields() {
   $('autorig-scale').disabled=!has;
   $('autorig-direction').disabled=!has;
   $('autorig-geometry-fit').disabled=!has || state.busy;
+  $('autorig-snap').disabled=!has || state.busy;
+  $('autorig-snap').textContent=state.rigSnapMode
+    ? '× Отменить выбор точки'
+    : '◎ Поставить сустав касанием тела';
+  $('autorig-snap').classList.toggle('active',state.rigSnapMode);
   $('autorig-scale').value=has ? String(Math.round(rig.root.scale.x*100)) : '100';
   $('autorig-scale-value').textContent=has ? Math.round(rig.root.scale.x*100)+'%' : '100%';
   $('autorig-front').disabled=!has;
@@ -322,7 +328,10 @@ function addRigGuide(ask=false) {
 
 function applyGeometryFit(ask=true) {
   if(!state.rigGuide||!state.root)return;
-  if(ask && !window.confirm('Автоматически заново подогнать основной скелет по геометрии? Ручные изменения положения тела будут заменены. Дополнительные цепочки сохранятся.'))return;
+  if(ask && !window.confirm('Автоматически заново подогнать основной скелет по геометрии? Ручные изменения положения тела будут заменены. Дополнительные цепочки сохранятся.')){
+    $('autorig-direction').value=state.rigGuide.lastFit?.direction||'z+';
+    return;
+  }
   try{
     const info=fitGuideToGeometry(state.rigGuide,state.root,$('autorig-direction').value);
     $('autorig-scale').value='100';
@@ -405,6 +414,31 @@ function dragRelease(event) {
 }
 // Capture-phase handler runs before OrbitControls and TransformControls.
 dom.addEventListener('pointerdown',event=>{
+  if(state.rigSnapMode && state.rigGuide && state.root && !state.busy){
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if(event.button!==0)return;
+    pointerRay(event.clientX,event.clientY);
+    const meshes=[];
+    state.root.traverse(obj=>{if(obj.isMesh && obj.visible)meshes.push(obj);});
+    const hits=rigRaycaster.intersectObjects(meshes,false);
+    if(!hits.length){
+      alertUser('На этом месте модели нет. Нажми прямо на нужную часть тела.');
+      return;
+    }
+    const h=state.rigGuide.height;
+    const part=state.rigSelected;
+    const inside=/Arm|Hand|Leg|Foot|Toe|Shoulder|Ear|Tail|Wing/i.test(part)
+      ? .025*h : .048*h;
+    const target=hits[0].point.clone().addScaledVector(rigRaycaster.ray.direction,inside);
+    if(moveJointWorld(state.rigGuide,part,target)){
+      state.rigSnapMode=false;
+      syncRigMarkers();
+      refreshRigFields();
+      alertUser('Сустав установлен по поверхности тела. При необходимости уточни X/Y/Z.');
+    }
+    return;
+  }
   if(rigDrag){
     event.stopImmediatePropagation();
     event.preventDefault();
@@ -921,6 +955,12 @@ onButton('autorig-remove',()=>{
 });
 onButton('autorig-save',saveRigGuide);
 onButton('autorig-geometry-fit',()=>applyGeometryFit(true));
+onButton('autorig-snap',()=>{
+  if(!state.rigGuide)return;
+  state.rigSnapMode=!state.rigSnapMode;
+  refreshRigFields();
+  if(state.rigSnapMode)alertUser('Теперь коснись нужного места персонажа в 3D.');
+});
 $('autorig-direction').addEventListener('change',()=>{
   if(state.rigGuide)applyGeometryFit(true);
 });

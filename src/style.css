@@ -57,3 +57,6 @@
 .body-fit-panel .field-label{margin:2px 0 -5px}
 .body-fit-panel select{margin:0;font-size:10px}
 .body-fit-panel button{font-size:10px;white-space:normal;min-height:35px}
+
+.rig-snap-button{margin:9px 0;border-color:#a46de6;white-space:normal}
+.rig-snap-button.active{background:linear-gradient(115deg,#80346f,#902e8e);box-shadow:0 0 17px #ed31b861;color:white}

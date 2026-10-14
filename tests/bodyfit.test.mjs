@@ -20,6 +20,7 @@ test('hair curtain BEHIND body does not pull spine out of torso',()=>{
   const spine=jointWorld(guide,'mixamorigSpine1');
   assert.ok(spine.z>-.17 && spine.z<.17,'spine must be inside torso, got '+spine.z);
   assert.ok(spine.z>oldSpine+.18,'spine must move forward from behind hair');
+  assert.ok(Math.abs(guide.root.position.z-spine.z)<.1,'rig anchor should follow torso depth');
   assert.ok(stats.sampleCount>20);
 });
 test('negative Z-facing models fit without moving bones into hair behind',()=>{

@@ -78,6 +78,11 @@ export function fitGuideToGeometry(guide,model,direction='z+'){
   if(!guide?.bones?.size)throw Error('Сначала добавь скелет');
   const {positions,info}=calculateHumanPose(model,direction);
   guide.root.scale.setScalar(1);
+  // Keep the rig anchor itself INSIDE the torso, not at the model-wide
+  // bounding-box centre (which may include long hair behind the back).
+  guide.root.position[info.lateralAxis]=info.lateralCenter;
+  guide.root.position[info.depthAxis]=info.coreDepth;
+  guide.root.position.y=info.bounds.min.y;
   guide.root.updateWorldMatrix(true,true);
   for(const [name,target] of positions){
     if(guide.bones.has(name))moveJointWorld(guide,name,target);
