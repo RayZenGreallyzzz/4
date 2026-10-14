@@ -74,3 +74,9 @@ A new **ПРИВЯЗАТЬ МОДЕЛЬ К СКЕЛЕТУ** button creates four 
 **WARNING:** this is a first-pass automatic skinning algorithm, not a Mixamo-quality solver. Complex armor, skirts, hair and tails can stretch unexpectedly; verify bone rotations and mesh motion in the editor. Limit: 450,000 vertices. Do not replace original model with a beta output.
 
 Before pressing Bind, save your fitted coordinates in the portable JSON format. **Загрузить подгонку JSON** loads that file later (including extra chains), and **Черновик подгонки** restores a per-model locally stored draft from this version onward. The older APK v8 did not autosave drafts; if the model was closed without JSON, the previous fitting cannot be reconstructed from the static GLB.
+
+## Large characters: chunked AutoSkin (v12)
+
+Removed the old fixed 450,000-vertex rejection. A 730,338-vertex character like the one in the test video can now be processed in batches of 8192 vertices, with UI progress updates. Original position/normal/UV/morph buffers are shared in the new skinned geometry instead of duplicating all of them; 4 indices + 4 float32 weights add about **24 bytes/vertex** (approximately 16.7 MiB for 730,338 vertices). Mobile memory protection now uses a budget of 80 MiB of *additional skin buffers*, which allows over 3 million vertices but may still need optimization for other memory-heavy models. This is not a promise that any model size will work on any tablet.
+
+The AutoSkin process yields to the UI between chunks; exceptions/cancellation preserve the original mesh and fitted skeleton. Automated regression tests include the 730,338-vertex scenario, cancellation and budget guards. This does not guarantee high-quality deformation on monsters, fur, heavy armor or separated clothing parts.

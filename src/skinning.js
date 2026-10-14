@@ -1,14 +1,16 @@
 import * as THREE from 'three';
 
-// First-pass LOCAL auto-weighting. No GPU compute, no external service.
-// Bind to already fitted bones, retaining mesh materials and transforms.
-// Geometry is never modified in place: a failed bind can be rolled back.
-const MAX_VERTICES = 450000;
+// Offline tablet AutoSkin. Work in small batches so large assets (700k+
+// vertices) do not freeze the UI. The original mesh/geometry is preserved for
+// rollback and buffer attributes are SHARED rather than deep-copied.
+const DEFAULT_MAX_EXTRA_BYTES = 80*1024*1024; // weights+indices, ~3.5m verts
+const DEFAULT_CHUNK_VERTICES = 8192;
+const yieldToUI = () => new Promise(resolve=>setTimeout(resolve,0));
 
-function collectSegments(bones, world) {
-  return bones.map((bone,i)=>{
-    const a=world[i];
-    const children=bone.children.filter(child=>child.isBone);
+function collectSegments(bones){
+  return bones.map(bone=>{
+    const a=bone.getWorldPosition(new THREE.Vector3());
+    const children=bone.children.filter(x=>x.isBone);
     const endpoints=children.length
       ? children.map(child=>child.getWorldPosition(new THREE.Vector3()))
       : [a.clone()];
@@ -23,57 +25,119 @@ function squareDistanceToLine(p,a,b){
   const dx=apx-abx*t,dy=apy-aby*t,dz=apz-abz*t;
   return dx*dx+dy*dy+dz*dz;
 }
-function boneScores(point, segments, softness) {
-  const topIdx=[0,0,0,0],topScore=[-1,-1,-1,-1];
-  const smooth=softness*softness;
+
+// Sort 4 strongest influences in place: no per-vertex Map / array / Vector3
+// allocations. This matters on low-memory Android with high-poly GLBs.
+function setInfluences(point,segments,smooth,indices,weights,offset,topIds,topStrength){
+  topStrength.fill(-1);
+  topIds.fill(0);
   for(let i=0;i<segments.length;i++){
     const seg=segments[i];
-    let d2=Number.POSITIVE_INFINITY;
-    for(const end of seg.endpoints)
-      d2=Math.min(d2,squareDistanceToLine(point,seg.a,end));
-    // A short-range radial falloff. Rigid plating near one bone remains
-    // mostly rigid; joints between two bones receive smooth blending.
-    const strength=1/((d2+smooth)*(Math.sqrt(d2+smooth)));
-    for(let j=0;j<4;j++)if(strength>topScore[j]){
-      for(let k=3;k>j;k--){topIdx[k]=topIdx[k-1];topScore[k]=topScore[k-1];}
-      topIdx[j]=i;topScore[j]=strength;break;
+    let d2=Infinity;
+    for(let j=0;j<seg.endpoints.length;j++){
+      const d=squareDistanceToLine(point,seg.a,seg.endpoints[j]);
+      if(d<d2)d2=d;
+    }
+    const base=d2+smooth;
+    const score=1/(base*Math.sqrt(base));
+    for(let j=0;j<4;j++){
+      if(score<=topStrength[j])continue;
+      for(let k=3;k>j;k--){
+        topIds[k]=topIds[k-1];
+        topStrength[k]=topStrength[k-1];
+      }
+      topIds[j]=i;
+      topStrength[j]=score;
+      break;
     }
   }
-  const denom=topScore.reduce((sum,s)=>sum+Math.max(0,s),0);
-  const weights=topScore.map((s,j)=>j<segments.length&&denom>0?Math.max(0,s)/denom:0);
-  return {indices:topIdx,weights};
+  let sum=0;
+  for(let j=0;j<4;j++)if(topStrength[j]>0)sum+=topStrength[j];
+  for(let j=0;j<4;j++){
+    indices[offset+j]=topIds[j];
+    weights[offset+j]=sum>0&&topStrength[j]>0?topStrength[j]/sum:0;
+  }
 }
 
-export function weightGeometry(geometry, matrixWorld, bones, characterHeight=2) {
-  if(!geometry?.isBufferGeometry||!geometry.attributes.position)throw Error('Меш не имеет вершин');
-  const count=geometry.attributes.position.count;
+function skinGeometryView(original,indices,weights){
+  // BufferGeometry.clone() duplicates ALL position, normal, UV, indices and
+  // morph buffers. For a 730k-vertex character this is a large memory spike.
+  // A separate geometry container can safely reference unchanged buffers.
+  const out=new THREE.BufferGeometry();
+  out.name=original.name;
+  for(const [name,attribute] of Object.entries(original.attributes)){
+    if(name==='skinIndex'||name==='skinWeight')continue;
+    out.setAttribute(name,attribute);
+  }
+  if(original.index)out.setIndex(original.index);
+  out.morphAttributes={};
+  for(const [name,attributes] of Object.entries(original.morphAttributes))
+    out.morphAttributes[name]=attributes.slice();
+  out.morphTargetsRelative=original.morphTargetsRelative;
+  out.groups=original.groups.map(g=>({...g}));
+  out.drawRange={...original.drawRange};
+  out.boundingBox=original.boundingBox?.clone()??null;
+  out.boundingSphere=original.boundingSphere?.clone()??null;
+  out.userData={...original.userData};
+  out.setAttribute('skinIndex',new THREE.Uint16BufferAttribute(indices,4));
+  out.setAttribute('skinWeight',new THREE.Float32BufferAttribute(weights,4));
+  return out;
+}
+function createWeightTask(geometry,matrixWorld,bones,characterHeight){
+  const pos=geometry?.attributes?.position;
+  if(!geometry?.isBufferGeometry || !pos)throw Error('Меш не имеет вершин');
+  const count=pos.count;
   if(!count)throw Error('Пустая геометрия');
   if(!bones?.length)throw Error('В скелете нет костей');
+  if(bones.length>65535)throw Error('Слишком много костей');
   for(const bone of bones)bone.updateWorldMatrix(true,false);
-  const world=bones.map(b=>b.getWorldPosition(new THREE.Vector3()));
-  const segments=collectSegments(bones,world);
-  const indices=new Uint16Array(count*4),weights=new Float32Array(count*4);
-  const source=geometry.attributes.position;
-  const point=new THREE.Vector3();
-  const softness=Math.max(.0002,characterHeight*.018);
-  for(let i=0;i<count;i++){
-    point.fromBufferAttribute(source,i).applyMatrix4(matrixWorld);
-    const result=boneScores(point,segments,softness);
-    for(let j=0;j<4;j++){
-      indices[i*4+j]=result.indices[j];
-      weights[i*4+j]=result.weights[j];
-    }
+  return {
+    geometry,pos,count,matrixWorld:matrixWorld.clone(),
+    segments:collectSegments(bones),
+    indices:new Uint16Array(count*4),
+    weights:new Float32Array(count*4),
+    softness:Math.max(.0002,characterHeight*.018)**2,
+    temp:new THREE.Vector3(),
+    topIds:new Uint16Array(4),
+    topStrength:new Float64Array(4)
+  };
+}
+function runWeightChunk(task,begin,end){
+  const {pos,matrixWorld,segments,indices,weights,softness,temp,topIds,topStrength}=task;
+  for(let i=begin;i<end;i++){
+    temp.fromBufferAttribute(pos,i).applyMatrix4(matrixWorld);
+    setInfluences(temp,segments,softness,indices,weights,i*4,topIds,topStrength);
   }
-  const copy=geometry.clone();
-  copy.setAttribute('skinIndex',new THREE.Uint16BufferAttribute(indices,4));
-  copy.setAttribute('skinWeight',new THREE.Float32BufferAttribute(weights,4));
-  return copy;
+}
+function completeTask(task){
+  return skinGeometryView(task.geometry,task.indices,task.weights);
+}
+
+// Keep synchronous API for small-model callers / diagnostic tests.
+export function weightGeometry(geometry,matrixWorld,bones,characterHeight=2){
+  const task=createWeightTask(geometry,matrixWorld,bones,characterHeight);
+  runWeightChunk(task,0,task.count);
+  return completeTask(task);
+}
+export async function weightGeometryChunked(geometry,matrixWorld,bones,characterHeight,{
+  chunkVertices=DEFAULT_CHUNK_VERTICES,onChunk=()=>{},signal
+}={}){
+  const task=createWeightTask(geometry,matrixWorld,bones,characterHeight);
+  const batch=Math.max(256,Math.min(32768,Math.floor(chunkVertices)||DEFAULT_CHUNK_VERTICES));
+  for(let start=0;start<task.count;start+=batch){
+    if(signal?.aborted)throw Error('Привязка отменена');
+    const end=Math.min(task.count,start+batch);
+    runWeightChunk(task,start,end);
+    onChunk(end,task.count);
+    if(end<task.count)await yieldToUI();
+  }
+  return completeTask(task);
 }
 
 function skinnedCopy(mesh,geometry){
   const skin=new THREE.SkinnedMesh(geometry,mesh.material);
   skin.name=mesh.name;
-  skin.uuid=mesh.uuid; // preserve animation node references if present
+  skin.uuid=mesh.uuid;
   skin.position.copy(mesh.position);
   skin.quaternion.copy(mesh.quaternion);
   skin.scale.copy(mesh.scale);
@@ -84,39 +148,45 @@ function skinnedCopy(mesh,geometry){
   skin.castShadow=mesh.castShadow;
   skin.receiveShadow=mesh.receiveShadow;
   skin.frustumCulled=false;
-  skin.userData=structuredClone(mesh.userData||{});
+  skin.userData={...mesh.userData};
   if(mesh.morphTargetInfluences){
     skin.morphTargetInfluences=[...mesh.morphTargetInfluences];
     skin.morphTargetDictionary={...mesh.morphTargetDictionary};
   }
   return skin;
 }
-
-function replaceMesh(oldMesh,newMesh){
-  const parent=oldMesh.parent;
+function replaceMesh(original,replacement){
+  const parent=original.parent;
   if(!parent)throw Error('Меш без родителя');
-  const index=parent.children.indexOf(oldMesh);
-  parent.add(newMesh);
-  parent.remove(oldMesh);
-  // Keep mesh ordering stable for glTF exporters and transparent armor.
-  const newIndex=parent.children.indexOf(newMesh);
-  parent.children.splice(newIndex,1);
-  parent.children.splice(index,0,newMesh);
+  const index=parent.children.indexOf(original);
+  parent.add(replacement);
+  parent.remove(original);
+  const inserted=parent.children.indexOf(replacement);
+  parent.children.splice(inserted,1);
+  parent.children.splice(index,0,replacement);
 }
 
-export async function bindRigToMeshes(modelRoot,guide,{onProgress=()=>{},maxVertices=MAX_VERTICES}={}) {
-  if(!modelRoot || !guide?.root || !guide?.bones?.size)throw Error('Загрузи модель и подгони скелет');
-  if(guide.root===modelRoot || modelRoot.getObjectById(guide.root.id))
+export async function bindRigToMeshes(modelRoot,guide,{
+  onProgress=()=>{},maxVertices=Infinity,maxExtraBytes=DEFAULT_MAX_EXTRA_BYTES,
+  chunkVertices=DEFAULT_CHUNK_VERTICES,signal
+}={}){
+  if(!modelRoot||!guide?.root||!guide?.bones?.size)
+    throw Error('Загрузи модель и подгони скелет');
+  if(guide.root===modelRoot||modelRoot.getObjectById(guide.root.id))
     throw Error('Этот скелет уже привязан');
   const meshes=[];
   modelRoot.traverse(obj=>{
     if(obj.isSkinnedMesh)throw Error('Персонаж уже содержит привязанные меши');
-    if(obj.isMesh && obj.geometry?.attributes?.position)meshes.push(obj);
+    if(obj.isMesh&&obj.geometry?.attributes?.position)meshes.push(obj);
   });
   const total=meshes.reduce((sum,m)=>sum+m.geometry.attributes.position.count,0);
   if(!total)throw Error('У модели нет геометрии для привязки');
-  if(total>maxVertices)throw Error('Слишком сложная модель ('+total+' вершин). Лимит '+maxVertices+' для планшета.');
-  // Include nested custom tail, ear, wing and hair chains.
+  // 4 uint16 indices + 4 float32 weights = 24 extra bytes/vertex.
+  const needed=total*24;
+  if(total>maxVertices||needed>maxExtraBytes)
+    throw Error('Слишком большая модель: '+total.toLocaleString('ru-RU')+
+      ' вершин. Для весов нужно примерно '+Math.ceil(needed/1048576)+
+      ' МБ памяти. Облегчи модель перед привязкой.');
   const bones=[...guide.bones.values()];
   if(bones.length>65535)throw Error('Слишком много костей');
   modelRoot.updateWorldMatrix(true,true);
@@ -124,10 +194,21 @@ export async function bindRigToMeshes(modelRoot,guide,{onProgress=()=>{},maxVert
   const skeleton=new THREE.Skeleton(bones);
   skeleton.calculateInverses();
   const replacements=[];
-  let processed=0, attached=false;
-  try {
+  let processed=0,attached=false;
+  const oldGuideParent=guide.root.parent;
+  try{
+    onProgress({processed,total,percentage:0});
     for(const mesh of meshes){
-      const geometry=weightGeometry(mesh.geometry,mesh.matrixWorld,bones,guide.height);
+      const geometry=await weightGeometryChunked(mesh.geometry,mesh.matrixWorld,bones,guide.height,{
+        chunkVertices,signal,
+        onChunk:(localCount,localTotal)=>{
+          onProgress({
+            processed:processed+localCount,total,
+            percentage:Math.floor((processed+localCount)/total*100)
+          });
+        }
+      });
+      if(signal?.aborted){geometry.dispose();throw Error('Привязка отменена');}
       const bound=skinnedCopy(mesh,geometry);
       replaceMesh(mesh,bound);
       bound.updateWorldMatrix(true,false);
@@ -135,28 +216,25 @@ export async function bindRigToMeshes(modelRoot,guide,{onProgress=()=>{},maxVert
       bound.normalizeSkinWeights();
       replacements.push({original:mesh,bound,geometry});
       processed+=geometry.attributes.position.count;
-      onProgress({processed,total,percentage:Math.round(processed/total*100)});
-      await new Promise(resolve=>setTimeout(resolve,0));
+      await yieldToUI();
     }
-    // Skin and armature must share one GLB export hierarchy.
+    // Attach armature only AFTER successfully generating all skin attributes.
     modelRoot.attach(guide.root);
     attached=true;
     modelRoot.updateWorldMatrix(true,true);
     skeleton.calculateInverses();
-    for(const {bound} of replacements){
-      bound.bind(skeleton,bound.matrixWorld.clone());
-      bound.normalizeSkinWeights();
-    }
+    for(const {bound} of replacements)bound.bind(skeleton,bound.matrixWorld.clone());
     onProgress({processed,total,percentage:100});
     return {skeleton,bones,vertices:total,meshes:replacements.length,armature:guide.root};
-  }catch(err){
+  }catch(error){
     for(const {original,bound,geometry} of replacements.reverse()){
       replaceMesh(bound,original);
       geometry.dispose();
     }
-    // In the normal flow attachment is last; an exception after attach is
-    // reported while leaving the fitted guide intact for inspection.
-    if(attached)modelRoot.remove(guide.root);
-    throw err;
+    if(attached){
+      if(oldGuideParent)oldGuideParent.attach(guide.root);
+      else guide.root.removeFromParent();
+    }
+    throw error;
   }
 }
