@@ -66,6 +66,7 @@ test('skinned vertices change world position when a weighted bone rotates',async
  const before=new THREE.Vector3(),after=new THREE.Vector3();
  skin.getVertexPosition(0,before);
  guide.bones.get('mixamorigSpine2').rotateZ(.4);
+ guide.root.updateWorldMatrix(true,true); // mirrors render-loop matrix update
  result.skeleton.update();
  skin.getVertexPosition(0,after);
  assert.ok(before.distanceTo(after)>.00001,'vertex should be changed by skeletal rotation');
