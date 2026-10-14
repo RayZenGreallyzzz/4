@@ -37,6 +37,7 @@
       <div class="editor-label"><strong>РЕДАКТОР АНИМАЦИЙ</strong><span id="status">● ГОТОВО</span></div>
       <section class="panel">
         <h3><span class="badge-number">02</span> Проект и анимация</h3>
+        <p id="rig-status" class="rig-status">Загрузи модель, чтобы определить скелет</p>
         <label class="field-label" for="clip-select">Клип персонажа</label><select id="clip-select" class="full-width"></select>
         <div class="two-fields"><label>Название<input id="clip-name" maxlength="70" value="New Animation" /></label><label>Кадров<input id="duration" type="number" min="1" max="1200" value="90"/></label></div>
         <button id="new-clip" type="button" class="button outline full-width">✦ Новая анимация</button>
@@ -63,7 +64,7 @@
       <section class="panel save-panel">
         <h3><span class="badge-number">06</span> Сохранение GLB</h3>
         <button id="save-glb" type="button" class="button cyan full-width prominent">▣ СОХРАНИТЬ АНИМАЦИЮ</button>
-        <p id="save-info" class="save-info">Модель, ключи и совместимые анимации сохраняются в GLB. Android предложит выбрать папку и имя.</p>
+        <p id="save-info" class="save-info">Модели со скелетом сохраняются с совместимыми анимациями. Модели без скелета можно сохранить как обычный GLB.</p>
         <p class="hint">Всё обрабатывается на устройстве · без облака.</p>
       </section>
     </aside>

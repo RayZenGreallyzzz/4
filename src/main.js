@@ -103,7 +103,7 @@ function resourceManager(files) {
 async function importCharacter(files) {
   if (!files?.length || state.loading || state.busy) return;
   const main = files.find(f => /\.(glb|gltf|fbx)$/i.test(f.name));
-  if (!main) return alertUser('Выбери GLB, GLTF или FBX со скелетом');
+  if (!main) return alertUser('Выбери GLB, GLTF или FBX');
   state.loading = true;
   $('loading-overlay').classList.remove('hidden');
   $('loading-name').textContent = main.name;
@@ -129,7 +129,8 @@ async function importCharacter(files) {
       if (o.isBone) bones.push(o);
       if (o.isMesh) o.frustumCulled = false;
     });
-    if (!bones.length) throw new Error('Модель без скелета. Выбери риггированного персонажа.');
+    // Non-rigged geometry is valid: preview and save it without joint editing.
+    const hasRig = bones.length > 0;
     disposeModel();
     state.root = root;
     state.modelName = main.name;
@@ -141,11 +142,18 @@ async function importCharacter(files) {
     state.frames = clips.length ? Math.min(MAX_FRAMES,Math.max(1,Math.round(clips[0].duration*FPS))) : 90;
     state.clipName = clips[0]?.name || 'New Animation';
     state.selected = bones.find(b=>/right(arm|forearm|hand)/i.test(b.name)) || bones[0];
-    state.mixer = new THREE.AnimationMixer(root);
+    state.mixer = clips.length ? new THREE.AnimationMixer(root) : null;
     scene.add(root);
-    state.skeleton = new THREE.SkeletonHelper(root);
-    state.skeleton.visible = $('show-bones').checked;
-    scene.add(state.skeleton);
+    if (hasRig) {
+      state.skeleton = new THREE.SkeletonHelper(root);
+      state.skeleton.visible = $('show-bones').checked;
+      scene.add(state.skeleton);
+    }
+    $('show-bones').disabled = !hasRig;
+    $('rig-status').textContent = hasRig
+      ? '✓ Скелет найден: ' + bones.length + ' костей. Можно создавать ключи.'
+      : '◇ Режим просмотра: скелета нет. Для анимации суставов нужен риг.';
+    $('rig-status').classList.toggle('no-rig', !hasRig);
     $('file-label').textContent = main.name;
     $('clip-name').value = state.clipName;
     $('duration').value = String(state.frames);
@@ -156,7 +164,8 @@ async function importCharacter(files) {
     frameCamera();
     showFrame(0);
     refreshControls();
-    alertUser('Персонаж загружен: ' + main.name);
+    alertUser(hasRig ? 'Персонаж загружен: ' + main.name
+      : 'Модель загружена без скелета. Доступны просмотр и сохранение GLB.');
   } catch (e) {
     console.error('Model import',e);
     alertUser('Ошибка загрузки: ' + (e?.message || String(e)));
@@ -277,7 +286,10 @@ function drawBoneList() {
     list.append(msg);
   }
   if (!filtered.length) {
-    const msg=document.createElement('p');msg.className='hint';msg.textContent='Совпадений нет';
+    const msg = document.createElement('p');
+    msg.className = 'hint';
+    msg.textContent = !state.root ? 'Загрузи модель' : !state.bones.length
+      ? 'Модель без скелета: для суставных анимаций нужен риг.' : 'Совпадений нет';
     list.append(msg);
   }
 }
@@ -318,12 +330,15 @@ function drawKeys() {
 
 function refreshControls() {
   const ready = !!state.root && !state.busy;
-  for(const id of ['save-glb','play','stop','to-start','to-end','step-minus','step-plus',
-    'key-bone','key-pose','copy-pose','clear-keys','clip-name','duration','seek']) {
-    $(id).disabled = !ready;
-  }
-  $('delete-key').disabled = !ready || !state.selected || !state.timeline.has(state.selected,state.frame);
-  $('paste-pose').disabled = !ready || !state.clipboard;
+  const rigged = ready && state.bones.length > 0;
+  const hasAnimation = ready && (state.sourceIndex >= 0 || state.timeline.count > 0);
+  for(const id of ['save-glb','stop','to-start','to-end','step-minus','step-plus',
+    'clip-name','duration','seek']) $(id).disabled = !ready;
+  for(const id of ['key-bone','key-pose','copy-pose','clear-keys'])
+    $(id).disabled = !rigged;
+  $('play').disabled = !hasAnimation;
+  $('delete-key').disabled = !rigged || !state.selected || !state.timeline.has(state.selected,state.frame);
+  $('paste-pose').disabled = !rigged || !state.clipboard;
   $('play').textContent = state.playing ? 'Ⅱ Пауза' : '▶ Играть';
 }
 
@@ -457,7 +472,8 @@ async function saveFile(buffer,name,mime,progress=()=>{}) {
 
 async function exportGLB() {
   if (!state.root || state.busy) return;
-  if(state.sourceIndex<0 && !state.timeline.count)return alertUser('Запиши хотя бы один ключ для новой анимации');
+  if (state.bones.length && state.sourceIndex < 0 && !state.timeline.count)
+    return alertUser('Запиши хотя бы один ключ для новой анимации');
   state.busy=true;
   const wasPlaying=state.playing;
   state.playing=false;
@@ -468,12 +484,14 @@ async function exportGLB() {
   let moved=false;
   try{
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-    const edited=exportClip();
-    const sourceClips=state.sourceClips.slice();
-    if(state.sourceIndex<0)sourceClips.push(edited);
-    else sourceClips[state.sourceIndex]=edited;
-    const clips=sourceClips.filter(c=>c.tracks.length);
-    if(!clips.length)throw new Error('В анимации нет экспортируемых движений');
+    const sourceClips = state.sourceClips.slice();
+    if (state.bones.length) {
+      const edited = exportClip();
+      if (state.sourceIndex < 0) sourceClips.push(edited);
+      else sourceClips[state.sourceIndex] = edited;
+    }
+    const clips = sourceClips.filter(c => c.tracks.length);
+    // Geometry-only models have no joint keys, but are valid GLB exports.
     exportScene.add(state.root);moved=true;
     const glb=await new GLTFExporter().parseAsync(exportScene,{
       binary:true,trs:true,onlyVisible:true,animations:clips
@@ -487,7 +505,9 @@ async function exportGLB() {
       $('save-info').textContent=p===100?'Открываем выбор папки…':'Передаём GLB: '+p+'%';
     });
     if(result.saved) {
-      $('save-info').textContent='Сохранено. Теперь проверь GLB повторной загрузкой.';
+      $('save-info').textContent=state.bones.length
+        ? 'Сохранено. Проверь анимацию повторной загрузкой.'
+        : 'Обычный GLB сохранён без скелета. Для движения суставов нужен риг.';
       alertUser('GLB сохранён!');
     } else if(result.cancelled) {
       $('save-info').textContent='Сохранение отменено — анимация осталась в редакторе.';
