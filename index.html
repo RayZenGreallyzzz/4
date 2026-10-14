@@ -46,6 +46,18 @@
         <h3><span class="badge-number">02A</span> AutoRig · подгонка скелета</h3>
         <p id="autorig-fit-state" class="autorig-state">Загрузи модель без костей, чтобы создать шаблон.</p>
         <button id="autorig-add" type="button" class="button cyan full-width" disabled>✦ Добавить скелет</button>
+        <div class="body-fit-panel">
+          <strong>◎ Анализ геометрии персонажа</strong>
+          <p>Скелет размещается по поверхности корпуса, а не по общим габаритам с волосами и одеждой. При необходимости укажи направление лица.</p>
+          <label class="field-label" for="autorig-direction">Куда смотрит персонаж в координатах модели?</label>
+          <select id="autorig-direction" class="full-width" disabled>
+            <option value="z+" selected>Вперёд: +Z (обычно GLB)</option>
+            <option value="z-">Вперёд: −Z (обратная сторона)</option>
+            <option value="x+">Вперёд: +X (повёрнутая модель)</option>
+            <option value="x-">Вперёд: −X (повёрнутая модель)</option>
+          </select>
+          <button id="autorig-geometry-fit" type="button" class="button cyan full-width" disabled>◎ Пересчитать скелет по модели</button>
+        </div>
         <label class="field-label" for="autorig-selected">Сустав шаблона (или нажми на точку в 3D)</label>
         <select id="autorig-selected" class="full-width" disabled>
           <option value="">Шаблон пока не добавлен</option>
@@ -115,7 +127,7 @@
           <button type="button" id="autorig-reset" class="button outline" disabled>↺ Сброс шаблона</button>
           <button type="button" id="autorig-remove" class="button outline" disabled>× Убрать шаблон</button>
         </div>
-        <p class="hint autorig-warning">Этап 1: выбирай цветную точку и перетаскивай пальцем. Вид «Спереди» — для ширины и высоты, «Сбоку» — для глубины. Масштаб и сдвиг всего скелета — выше. Суставы можно также двигать стрелками или вводить координаты. Это НЕ готовый риг: привязка вершин и веса кожи будут отдельным этапом. Экспорт GLB пока сохраняет модель без шаблона; координаты суставов — отдельно в JSON.</p>
+        <p class="hint autorig-warning">Этап 1: AutoRig сначала оценивает центр тела по реальным вершинам мешей. Если персонаж смотрит назад или вбок — исправь направление выше и пересчитай. Затем выбирай точку и перетаскивай пальцем. Вид «Спереди» — для ширины и высоты, «Сбоку» — для глубины. Масштаб и сдвиг всего скелета — выше. Суставы можно также двигать стрелками или вводить координаты. Это НЕ готовый риг: привязка вершин и веса кожи будут отдельным этапом. Экспорт GLB пока сохраняет модель без шаблона; координаты суставов — отдельно в JSON.</p>
       </section>
       <section class="panel bones-panel">
         <h3><span class="badge-number">03</span> Скелет <small id="bones-count">0 / 0</small></h3>

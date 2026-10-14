@@ -7,6 +7,7 @@ import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { FPS, MAX_FRAMES, Timeline, boneLookup, compileClip, clampFrame } from './timeline.js';
 import { JOINTS, createGuide, jointWorld, moveJointWorld, serializeFit, addGuideChain, removeGuideChain } from './autorig.js';
+import { fitGuideToGeometry } from './bodyfit.js';
 import './style.css';
 
 const $ = id => document.getElementById(id);
@@ -130,6 +131,8 @@ function refreshRigFields() {
   const selected=has ? jointWorld(rig,state.rigSelected) : null;
   $('autorig-selected').value=has ? state.rigSelected : '';
   $('autorig-scale').disabled=!has;
+  $('autorig-direction').disabled=!has;
+  $('autorig-geometry-fit').disabled=!has || state.busy;
   $('autorig-scale').value=has ? String(Math.round(rig.root.scale.x*100)) : '100';
   $('autorig-scale-value').textContent=has ? Math.round(rig.root.scale.x*100)+'%' : '100%';
   $('autorig-front').disabled=!has;
@@ -164,8 +167,10 @@ function refreshRigFields() {
     : 'Сначала подгони основное тело, затем добавляй новые цепочки.';
   $('autorig-fit-state').textContent=!state.root?'Сначала загрузи модель GLB/FBX.'
     :state.bones.length?'У персонажа уже есть кости — шаблон не нужен.'
-    :has?rig.bones.size+' суставов размещены. Подгони положения; геометрия ещё НЕ привязана.'
-    :'Режим без скелета. Можно добавить шаблон для подгонки суставов.';
+    :has?(rig.lastFit
+      ? rig.bones.size+' костей · анализ '+rig.lastFit.samples+' вершин. Центр корпуса подогнан по геометрии. Уточни суставы вручную.'
+      : rig.bones.size+' суставов по шаблону. Примени анализ геометрии.')
+    :'Модель без скелета. После добавления AutoRig анализирует реальную геометрию корпуса.';
   $('autorig-fit-state').classList.toggle('autorig-ready',has);
   $('autorig-arrows').checked=state.rigEditMode==='arrows';
   $('autorig-drag-tip').textContent=state.rigEditMode==='touch'
@@ -299,12 +304,34 @@ function addRigGuide(ask=false) {
     updateChainMenu();
     state.rigEnabled=true;
     state.rigEditMode='touch';
+    try {
+      const fit=fitGuideToGeometry(guide,state.root,$('autorig-direction').value);
+      alertUser('Скелет размещён по '+fit.sampleCount+' вершинам модели. Проверь вид сбоку!');
+    }catch(fitError){
+      console.warn('Geometry fit fallback',fitError);
+      alertUser('Геометрию не удалось проанализировать. Оставлен шаблон: '+fitError.message);
+    }
     $('autorig-visible').checked=true;
     chooseRigJoint('mixamorigHips');
     refreshRigFields();
-    alertUser('Шаблон добавлен! Выбирай суставы и подгоняй их под модель.');
+    // Fit status above reports whether geometry-aware placement succeeded.
   }catch(error){
     alertUser('Не удалось построить шаблон: '+(error?.message||String(error)));
+  }
+}
+
+function applyGeometryFit(ask=true) {
+  if(!state.rigGuide||!state.root)return;
+  if(ask && !window.confirm('Автоматически заново подогнать основной скелет по геометрии? Ручные изменения положения тела будут заменены. Дополнительные цепочки сохранятся.'))return;
+  try{
+    const info=fitGuideToGeometry(state.rigGuide,state.root,$('autorig-direction').value);
+    $('autorig-scale').value='100';
+    syncRigMarkers();
+    refreshRigFields();
+    alertUser('Центр корпуса исправлен ('+info.sampleCount+' вершин). Проверь его спереди и сбоку.');
+  }catch(error){
+    console.error('Geometry fitting failed',error);
+    alertUser('Не удалось подогнать скелет: '+(error?.message||String(error)));
   }
 }
 
@@ -893,6 +920,10 @@ onButton('autorig-remove',()=>{
   alertUser('Шаблон удалён. Модель не изменена.');
 });
 onButton('autorig-save',saveRigGuide);
+onButton('autorig-geometry-fit',()=>applyGeometryFit(true));
+$('autorig-direction').addEventListener('change',()=>{
+  if(state.rigGuide)applyGeometryFit(true);
+});
 onButton('chain-add',createCustomChain);
 onButton('chain-remove',deleteCustomChain);
 $('chain-count').addEventListener('input',event=>{

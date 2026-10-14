@@ -32,6 +32,10 @@ const specs = [
 ];
 
 export const JOINTS = specs.map(([part])=>'mixamorig'+part);
+export const HUMANOID_TEMPLATE = specs.map(([part,parent,lateral,y,forward])=>({
+  name:'mixamorig'+part,
+  parent:parent?'mixamorig'+parent:null,lateral,y,forward
+}));
 
 export function guessPositions(bounds) {
   if (!(bounds instanceof THREE.Box3) || bounds.isEmpty()) throw Error('Нужна модель для определения размеров');
@@ -169,6 +173,7 @@ export function serializeFit(guide,modelName) {
     units:'original Three.js GLB scene units',
     boundToMesh:false,
     skinWeights:false,
+    geometryFit:guide.lastFit||null,
     rootPosition:guide.root.position.toArray(),
     rootScale:guide.root.scale.toArray(),
     chains:(guide.chains||[]).map(chain=>({id:chain.id,type:chain.type,parent:chain.parent,bones:[...chain.names]})),

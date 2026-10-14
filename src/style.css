@@ -49,3 +49,11 @@
 .custom-chain-panel .chain-count span{float:right;color:#2df5ee}
 .custom-chain-panel input[type=range]{width:100%;accent-color:#1be3f7;touch-action:pan-y;min-height:28px}
 .custom-chain-panel button{min-height:36px}
+
+/* Geometry-aware body-fit controls. */
+.body-fit-panel{padding:11px;margin:11px 0 13px;display:grid;gap:8px;background:#0e2a37;border:1px solid #368899;border-radius:11px}
+.body-fit-panel>strong{font-size:11px;color:#72edfa;letter-spacing:.2px}
+.body-fit-panel p{font-size:10px;color:#a4d1da;line-height:1.55;margin:0}
+.body-fit-panel .field-label{margin:2px 0 -5px}
+.body-fit-panel select{margin:0;font-size:10px}
+.body-fit-panel button{font-size:10px;white-space:normal;min-height:35px}

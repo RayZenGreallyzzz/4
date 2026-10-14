@@ -50,3 +50,11 @@ GLB/GLTF/FBX без костей теперь загружаются в 3D-пр�
 Все кости доступны в общем выпадающем списке, в 3D-маркерах и в точных координатах X/Y/Z. При сохранении `*_rigfit.json` добавляются также цепочки и позиции их суставов. Основная модель и её материалы остаются без изменений.
 
 **Важное ограничение:** это система подгонки костей, а не автоматический скиннинг. Кости дополнительных цепочек не заставят геометрию двигаться, пока для соответствующего хвоста/крыльев не созданы и не проверены веса вершин. Импорт готовых ригов и обычный редактор анимаций не менялись.
+
+## AutoRig geometry-based first pass
+
+AutoRig no longer uses only overall Box3 bounds to position the central spine. On selecting `Добавить скелет` the editor samples the *actual loaded mesh vertices* (bounded to approximately 36,000 points for weak Android devices), isolates central torso-height geometry, and estimates the near-front surface and an inward offset. This avoids placing the spine in back hair, a cape, or a backpack, as seen in the user's test video. It also estimates width from the body's vertex cross-section rather than blindly using total hair/shield spread.
+
+Different GLB/FBX characters can face +Z, -Z, +X or -X. Use **Направление персонажа** and **Пересчитать скелет по модели** if the guessed front is incorrect. This explicitly overwrites previous manual main-skeleton fitting with user confirmation; extra chains remain attached.
+
+The torso approximation is *not automatic anatomy recognition*. It is a more reliable starting location. Shoulder, knee and wrist positions still need manual review, especially on non-standard outfits. The original mesh is unchanged and skin weights are still not generated.
