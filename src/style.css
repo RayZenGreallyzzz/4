@@ -15,3 +15,17 @@
 /* Static preview for imported models without bones */
 .rig-status{margin:0 0 11px;padding:9px 10px;border-radius:8px;border:1px solid #285879;background:#132e40;color:#8ee9c3;font-size:10px;line-height:1.5}
 .rig-status.no-rig{background:#302b25;border-color:#66573c;color:#ffcd93}
+
+/* AutoRig fit mode (stage 1): small separate panel; no web/cloud assets */
+.autorig-panel{background:linear-gradient(155deg,#182536,#141d30)}
+.autorig-state{padding:9px 10px;border:1px solid #655a45;color:#f8c78a;background:#2b2928;border-radius:9px;font-size:10px;line-height:1.5}
+.autorig-state.autorig-ready{border-color:#318d91;color:#91f4df;background:#143039}
+.autorig-panel select{margin-top:2px;margin-bottom:10px}
+.autorig-panel .field-label{margin:12px 0 6px}
+.autorig-xyz{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.autorig-xyz label{font-size:10px;color:#b3d4ee;display:grid;gap:4px}
+.autorig-xyz input{width:100%;padding:8px 4px;text-align:center}
+.autorig-toggle{margin:13px 0;color:#a4c5d9}
+.autorig-actions{margin-top:10px}
+.autorig-actions #autorig-save{grid-column:1/-1}
+.autorig-warning{border-left:2px solid #f49a53;padding-left:9px}

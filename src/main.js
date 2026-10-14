@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { FPS, MAX_FRAMES, Timeline, boneLookup, compileClip, clampFrame } from './timeline.js';
+import { JOINTS, createGuide, jointWorld, moveJointWorld, serializeFit } from './autorig.js';
 import './style.css';
 
 const $ = id => document.getElementById(id);
@@ -26,6 +28,19 @@ orbit.target.set(0,1,0);
 orbit.minDistance = .01;
 orbit.maxDistance = 400;
 orbit.update();
+// The rig fit manipulator is independent from the character's animation.
+// No underlying mesh is skinned or modified during the fitting stage.
+const rigTransform = new TransformControls(camera,renderer.domElement);
+rigTransform.setMode('translate');
+rigTransform.setSpace('world');
+rigTransform.setSize(.7);
+scene.add(rigTransform.getHelper());
+rigTransform.getHelper().visible = false;
+rigTransform.addEventListener('dragging-changed',event=>{orbit.enabled=!event.value;});
+rigTransform.addEventListener('objectChange',()=>{
+  syncRigMarkers();
+  refreshRigFields();
+});
 scene.add(new THREE.HemisphereLight(0xc8e6ff,0x1b253b,2.35));
 const sun = new THREE.DirectionalLight(0xffe7d0,3.1);
 sun.position.set(3,7,5); scene.add(sun);
@@ -42,7 +57,9 @@ const state = {
   timeline: new Timeline(), selected: null, skeleton: null,
   frame: 0, frames: 90, playing: false, loop: true, speed: 1,
   clipName: 'New Animation', clipboard: null, busy: false, loading: false,
-  rafStamp: 0, frameCarry: 0, toastTimer: null
+  rafStamp: 0, frameCarry: 0, toastTimer: null,
+  rigGuide:null, rigVisual:null, rigMarkers:[], rigSelected:'mixamorigHips',
+  rigEnabled:true
 };
 const alertUser = msg => {
   const e = $('toast');
@@ -55,6 +72,7 @@ const report = s => { $('status').textContent = '● ' + s; };
 const onButton = (id, fn) => $(id).addEventListener('click',fn);
 
 function disposeModel() {
+  disposeRigGuide();
   state.playing = false;
   if (state.mixer) { state.mixer.stopAllAction(); state.mixer.uncacheRoot(state.root); }
   if (state.skeleton) {
@@ -82,6 +100,160 @@ function disposeModel() {
   state.timeline.clear();
   state.clipboard = null;
 }
+
+// AutoRig stage 1: fit guide only, intentionally not an animated/weighted mesh.
+function disposeRigGuide() {
+  rigTransform.detach();
+  rigTransform.getHelper().visible=false;
+  if (state.rigVisual) {
+    scene.remove(state.rigVisual);
+    state.rigVisual.geometry.dispose();
+    state.rigVisual.material.dispose();
+    state.rigVisual=null;
+  }
+  for (const marker of state.rigMarkers) {
+    scene.remove(marker);
+    marker.geometry.dispose();
+    marker.material.dispose();
+  }
+  state.rigMarkers=[];
+  if (state.rigGuide) {
+    scene.remove(state.rigGuide.root);
+    state.rigGuide=null;
+  }
+}
+
+function refreshRigFields() {
+  const rig=state.rigGuide;
+  const has=Boolean(rig);
+  const selected=has ? jointWorld(rig,state.rigSelected) : null;
+  $('autorig-selected').value=has ? state.rigSelected : '';
+  for(const axis of ['x','y','z']) {
+    const field=$('autorig-'+axis);
+    field.disabled=!has;
+    if (document.activeElement!==field) field.value=selected ? selected[axis].toFixed(4) : '0';
+    if(has)field.step=String(Math.max(.0001,rig.height*.005).toPrecision(3));
+  }
+  $('autorig-selected').disabled=!has;
+  $('autorig-reset').disabled=!has;
+  $('autorig-remove').disabled=!has;
+  $('autorig-save').disabled=!has;
+  $('autorig-visible').disabled=!has;
+  $('autorig-add').disabled=!state.root||!!state.bones.length||state.busy;
+  $('autorig-add').textContent=has?'↺ Перестроить шаблон':'✦ Добавить скелет';
+  $('autorig-fit-state').textContent=!state.root?'Сначала загрузи модель GLB/FBX.'
+    :state.bones.length?'У персонажа уже есть кости — шаблон не нужен.'
+    :has?'22 сустава размещены. Подгони положения; геометрия ещё НЕ привязана.'
+    :'Режим без скелета. Можно добавить шаблон для подгонки суставов.';
+  $('autorig-fit-state').classList.toggle('autorig-ready',has);
+}
+
+function syncRigMarkers() {
+  if(!state.rigGuide)return;
+  state.rigGuide.root.updateWorldMatrix(true,true);
+  for(const marker of state.rigMarkers){
+    const name=marker.userData.jointName;
+    const position=jointWorld(state.rigGuide,name);
+    if(position)marker.position.copy(position);
+    marker.material.color.setHex(name===state.rigSelected?0xff6ad8:0x16e7f5);
+    marker.scale.setScalar(name===state.rigSelected?1.45:1);
+    marker.visible=state.rigEnabled;
+  }
+  if(state.rigVisual)state.rigVisual.visible=state.rigEnabled;
+  rigTransform.getHelper().visible=state.rigEnabled && Boolean(rigTransform.object);
+}
+
+function chooseRigJoint(name) {
+  if(!state.rigGuide?.bones.has(name))return;
+  state.rigSelected=name;
+  rigTransform.attach(state.rigGuide.bones.get(name));
+  syncRigMarkers();
+  refreshRigFields();
+}
+
+function addRigGuide(ask=false) {
+  if(!state.root||state.bones.length)return alertUser('Шаблон доступен только для модели без костей');
+  if(ask && state.rigGuide && !window.confirm('Заменить текущую подгонку скелета новым шаблоном?'))return;
+  try{
+    // Bounds use mesh geometry, including model offsets in GLB coordinates.
+    state.root.updateWorldMatrix(true,true);
+    const bounds=new THREE.Box3().setFromObject(state.root);
+    const guide=createGuide(bounds);
+    disposeRigGuide();
+    state.rigGuide=guide;
+    scene.add(guide.root);
+    const helper=new THREE.SkeletonHelper(guide.root);
+    state.rigVisual=helper;
+    scene.add(helper);
+    const radius=Math.max(.004,guide.height*.009);
+    for(const name of JOINTS){
+      const marker=new THREE.Mesh(
+        new THREE.SphereGeometry(radius,8,6),
+        new THREE.MeshBasicMaterial({color:0x16e7f5,depthTest:false,transparent:true,opacity:.94})
+      );
+      marker.name='GuideMarker_'+name;
+      marker.userData.jointName=name;
+      marker.renderOrder=999;
+      scene.add(marker);
+      state.rigMarkers.push(marker);
+    }
+    state.rigEnabled=true;
+    $('autorig-visible').checked=true;
+    chooseRigJoint('mixamorigHips');
+    refreshRigFields();
+    alertUser('Шаблон добавлен! Выбирай суставы и подгоняй их под модель.');
+  }catch(error){
+    alertUser('Не удалось построить шаблон: '+(error?.message||String(error)));
+  }
+}
+
+function editRigCoordinate(axis,raw) {
+  if(!state.rigGuide||state.busy)return;
+  const value=Number(raw);
+  if(!Number.isFinite(value))return;
+  const point=jointWorld(state.rigGuide,state.rigSelected);
+  if(!point)return;
+  point[axis]=value;
+  moveJointWorld(state.rigGuide,state.rigSelected,point);
+  syncRigMarkers();
+  refreshRigFields();
+}
+
+async function saveRigGuide() {
+  if(!state.rigGuide||state.busy)return;
+  state.busy=true;
+  refreshControls();
+  try{
+    const data=JSON.stringify(serializeFit(state.rigGuide,state.modelName),null,2);
+    const filename=(state.modelName||'character').replace(/\.[^.]+$/,'')
+      .replace(/[^\p{L}\p{N}_-]+/gu,'_').slice(0,50)+'_rigfit.json';
+    const result=await saveFile(data,filename,'application/json');
+    alertUser(result.saved?'Позиции скелета сохранены в JSON':result.cancelled?'Сохранение отменено':'JSON передан браузеру');
+  }catch(error){
+    alertUser('Ошибка сохранения шаблона: '+(error?.message||String(error)));
+  }finally{
+    state.busy=false;
+    refreshControls();
+  }
+}
+
+const rigRaycaster=new THREE.Raycaster();
+const rigPointer=new THREE.Vector2();
+let pointerStart=null,usedTransform=false;
+renderer.domElement.addEventListener('pointerdown',event=>{
+  pointerStart={x:event.clientX,y:event.clientY};
+  usedTransform=false;
+});
+rigTransform.addEventListener('dragging-changed',event=>{if(event.value)usedTransform=true;});
+renderer.domElement.addEventListener('pointerup',event=>{
+  if(!pointerStart||!state.rigGuide||!state.rigEnabled||usedTransform)return;
+  if(Math.hypot(event.clientX-pointerStart.x,event.clientY-pointerStart.y)>12)return;
+  const rect=renderer.domElement.getBoundingClientRect();
+  rigPointer.set((event.clientX-rect.left)/rect.width*2-1,-(event.clientY-rect.top)/rect.height*2+1);
+  rigRaycaster.setFromCamera(rigPointer,camera);
+  const hits=rigRaycaster.intersectObjects(state.rigMarkers,false);
+  if(hits.length)chooseRigJoint(hits[0].object.userData.jointName);
+});
 
 function resourceManager(files) {
   const urls = [], byName = new Map();
@@ -154,6 +326,7 @@ async function importCharacter(files) {
       ? '✓ Скелет найден: ' + bones.length + ' костей. Можно создавать ключи.'
       : '◇ Режим просмотра: скелета нет. Для анимации суставов нужен риг.';
     $('rig-status').classList.toggle('no-rig', !hasRig);
+    refreshRigFields();
     $('file-label').textContent = main.name;
     $('clip-name').value = state.clipName;
     $('duration').value = String(state.frames);
@@ -340,6 +513,7 @@ function refreshControls() {
   $('delete-key').disabled = !rigged || !state.selected || !state.timeline.has(state.selected,state.frame);
   $('paste-pose').disabled = !rigged || !state.clipboard;
   $('play').textContent = state.playing ? 'Ⅱ Пауза' : '▶ Играть';
+  refreshRigFields();
 }
 
 function editAngle(axis, value) {
@@ -455,8 +629,11 @@ async function saveFile(buffer,name,mime,progress=()=>{}) {
   }
   if(typeof window.showSaveFilePicker==='function'){
     try{
+      const isJson=name.toLowerCase().endsWith('.json');
       const h=await window.showSaveFilePicker({
-        suggestedName:name,types:[{description:'3D GLB',accept:{'model/gltf-binary':['.glb']}}]
+        suggestedName:name,types:[isJson
+          ? {description:'JSON',accept:{'application/json':['.json']}}
+          : {description:'3D GLB',accept:{'model/gltf-binary':['.glb']}}]
       });
       const out=await h.createWritable();
       await out.write(data);await out.close();
@@ -491,6 +668,8 @@ async function exportGLB() {
       else sourceClips[state.sourceIndex] = edited;
     }
     const clips = sourceClips.filter(c => c.tracks.length);
+    // The fitted guide lives outside the model root, so geometry-only
+    // exports never pretend to contain a skinned Mixamo character.
     // Geometry-only models have no joint keys, but are valid GLB exports.
     exportScene.add(state.root);moved=true;
     const glb=await new GLTFExporter().parseAsync(exportScene,{
@@ -508,7 +687,7 @@ async function exportGLB() {
       $('save-info').textContent=state.bones.length
         ? 'Сохранено. Проверь анимацию повторной загрузкой.'
         : 'Обычный GLB сохранён без скелета. Для движения суставов нужен риг.';
-      alertUser('GLB сохранён!');
+      alertUser(state.rigGuide?'GLB сохранён БЕЗ привязки. Сохрани также шаблон JSON.':'GLB сохранён!');
     } else if(result.cancelled) {
       $('save-info').textContent='Сохранение отменено — анимация осталась в редакторе.';
       alertUser('Сохранение отменено');
@@ -543,6 +722,24 @@ onButton('menu-about',()=>{$('welcome-info').classList.toggle('hidden');});
 onButton('show-menu',openMenu);
 onButton('menu-dismiss',closeMenu);
 onButton('camera-frame',frameCamera);
+onButton('autorig-add',()=>addRigGuide(true));
+onButton('autorig-reset',()=>addRigGuide(true));
+onButton('autorig-remove',()=>{
+  if(!state.rigGuide)return;
+  if(!window.confirm('Удалить подогнанный шаблон суставов?'))return;
+  disposeRigGuide();
+  refreshRigFields();
+  alertUser('Шаблон удалён. Модель не изменена.');
+});
+onButton('autorig-save',saveRigGuide);
+$('autorig-selected').addEventListener('change',event=>chooseRigJoint(event.target.value));
+$('autorig-visible').addEventListener('change',event=>{
+  state.rigEnabled=event.target.checked;
+  syncRigMarkers();
+});
+for(const axis of ['x','y','z'])
+  $('autorig-'+axis).addEventListener('change',event=>editRigCoordinate(axis,event.target.value));
+
 onButton('new-clip',()=>switchClip('new'));
 $('bone-search').addEventListener('input',drawBoneList);
 $('clip-select').addEventListener('change',e=>switchClip(e.target.value));
@@ -621,6 +818,7 @@ function animate(){
       if(uiAcc>=.075){refreshAngles();drawKeys();refreshControls();uiAcc=0;}
     }
   }
+  if(state.rigGuide)syncRigMarkers();
   orbit.update();
   renderer.render(scene,camera);
 }
@@ -629,4 +827,5 @@ buildClipMenu();
 drawBoneList();
 showFrame(0);
 refreshControls();
+refreshRigFields();
 report('ГОТОВО');
