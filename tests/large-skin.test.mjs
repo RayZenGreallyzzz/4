@@ -33,8 +33,8 @@ test('730338-vertex model skins successfully in batches, no 450k limit',async()=
   assert.ok(model.children.some(c=>c.isSkinnedMesh));
   const skin=model.children.find(x=>x.isSkinnedMesh);
   assert.equal(skin.geometry.attributes.skinWeight.count,730338);
-  assert.equal(skin.geometry.attributes.position.array,coords,
-    'source position buffer must be shared, not duplicated');
+  assert.ok(skin.geometry.attributes.position.array === geo.attributes.position.array,
+    'the original mesh position attribute must be reused, not duplicated');
   assert.ok(!geo.attributes.skinWeight,'source geometry must remain unchanged');
   assert.equal(updates[0],0);
   assert.equal(updates.at(-1),100);
