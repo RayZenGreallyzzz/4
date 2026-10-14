@@ -29,3 +29,12 @@
 .autorig-actions{margin-top:10px}
 .autorig-actions #autorig-save{grid-column:1/-1}
 .autorig-warning{border-left:2px solid #f49a53;padding-left:9px}
+
+/* AutoRig fit UX v0.4: finger drag, camera views and template scaling */
+.autorig-drag-tip{color:#8bebf1;background:#113141;border:1px solid #27687e;padding:9px 10px;border-radius:9px;font-size:10px;line-height:1.55}
+.autorig-view-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0 12px}
+.autorig-view-row .button{min-width:0;font-size:10px;padding:10px 3px}
+.autorig-scale-line{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:5px 8px;color:#b8dafa;font-size:10px;font-weight:700;margin:8px 0 13px}
+.autorig-scale-line span{color:#38ebfa}
+.autorig-scale-line input{grid-column:1/-1;width:100%;min-height:31px;accent-color:#1ee5ee;touch-action:pan-y}
+.autorig-toggle{margin:8px 0 10px;line-height:1.5}

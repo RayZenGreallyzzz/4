@@ -40,3 +40,21 @@ test('guide serialization clearly indicates no mesh binding and retains coordina
 test('empty model bounds are rejected',()=>{
   assert.throws(()=>guessPositions(new THREE.Box3()),/размеров/);
 });
+
+
+test('template anchored under off-origin model can be scaled and moved as a whole',()=>{
+  const box=new THREE.Box3(new THREE.Vector3(9,4,-3),new THREE.Vector3(11,8,-1));
+  const guide=createGuide(box);
+  assert.ok(guide.root.position.distanceTo(new THREE.Vector3(10,4,-2))<1e-6);
+  const start=jointWorld(guide,'mixamorigHead').clone();
+  const rootStart=jointWorld(guide,'__root__').clone();
+  guide.root.scale.setScalar(1.25);
+  guide.root.updateMatrixWorld(true);
+  const scaled=jointWorld(guide,'mixamorigHead').clone();
+  assert.ok(Math.abs(scaled.y-rootStart.y-(start.y-rootStart.y)*1.25)<1e-5);
+  assert.ok(moveJointWorld(guide,'__root__',rootStart.clone().add(new THREE.Vector3(.4,0,0))));
+  assert.ok(Math.abs(jointWorld(guide,'mixamorigHead').x-scaled.x-.4)<1e-5);
+  const result=serializeFit(guide,'elf.glb');
+  assert.equal(result.rootScale[0],1.25);
+  assert.ok(Math.abs(result.rootPosition[0]-10.4)<1e-5);
+});

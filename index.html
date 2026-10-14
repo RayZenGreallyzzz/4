@@ -49,6 +49,7 @@
         <label class="field-label" for="autorig-selected">Сустав шаблона (или нажми на точку в 3D)</label>
         <select id="autorig-selected" class="full-width" disabled>
           <option value="">Шаблон пока не добавлен</option>
+          <option value="__root__">◆ ВЕСЬ СКЕЛЕТ · сдвиг</option>
           <option value="mixamorigHips">Таз</option>
           <option value="mixamorigSpine">Позвоночник 1</option>
           <option value="mixamorigSpine1">Позвоночник 2</option>
@@ -72,18 +73,27 @@
           <option value="mixamorigRightFoot">Правая стопа</option>
           <option value="mixamorigRightToeBase">Правый носок</option>
         </select>
+        <p id="autorig-drag-tip" class="autorig-drag-tip">Коснись точки на модели и перетащи её пальцем.</p>
+        <div class="autorig-view-row">
+          <button id="autorig-front" type="button" class="button outline" disabled>◉ Спереди</button>
+          <button id="autorig-side" type="button" class="button outline" disabled>◉ Сбоку</button>
+        </div>
+        <label class="autorig-scale-line">Масштаб всего скелета <span id="autorig-scale-value">100%</span>
+          <input type="range" id="autorig-scale" min="50" max="175" value="100" step="1" disabled/>
+        </label>
         <div class="autorig-xyz">
           <label>X<input type="number" id="autorig-x" value="0" disabled/></label>
           <label>Y<input type="number" id="autorig-y" value="0" disabled/></label>
           <label>Z<input type="number" id="autorig-z" value="0" disabled/></label>
         </div>
-        <label class="toggle-line autorig-toggle"><input type="checkbox" id="autorig-visible" disabled checked/> Показывать суставы и стрелки</label>
+        <label class="toggle-line autorig-toggle"><input type="checkbox" id="autorig-visible" disabled checked/> Показывать суставы</label>
+        <label class="toggle-line autorig-toggle"><input type="checkbox" id="autorig-arrows" disabled/> Режим стрелок (вместо перемещения пальцем)</label>
         <div class="action-grid autorig-actions">
           <button type="button" id="autorig-save" class="button violet" disabled>▣ Сохранить подгонку JSON</button>
           <button type="button" id="autorig-reset" class="button outline" disabled>↺ Сброс шаблона</button>
           <button type="button" id="autorig-remove" class="button outline" disabled>× Убрать шаблон</button>
         </div>
-        <p class="hint autorig-warning">Этап 1: суставы можно двигать в 3D стрелками или вводить координаты. Это НЕ готовый риг: привязка вершин и веса кожи будут отдельным этапом. Экспорт GLB пока сохраняет модель без шаблона; координаты суставов — отдельно в JSON.</p>
+        <p class="hint autorig-warning">Этап 1: выбирай цветную точку и перетаскивай пальцем. Вид «Спереди» — для ширины и высоты, «Сбоку» — для глубины. Масштаб и сдвиг всего скелета — выше. Суставы можно также двигать стрелками или вводить координаты. Это НЕ готовый риг: привязка вершин и веса кожи будут отдельным этапом. Экспорт GLB пока сохраняет модель без шаблона; координаты суставов — отдельно в JSON.</p>
       </section>
       <section class="panel bones-panel">
         <h3><span class="badge-number">03</span> Скелет <small id="bones-count">0 / 0</small></h3>

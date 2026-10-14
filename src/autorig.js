@@ -57,6 +57,10 @@ export function createGuide(bounds) {
   const {height,positions} = guessPositions(bounds);
   const root = new THREE.Group();
   root.name = 'AutoRigFit_guide_not_skinned';
+  // Anchor the guide at ground level, directly under the character centre.
+  // Scaling now enlarges the skeleton around the body instead of world zero.
+  const hip = positions.get('mixamorigHips').position;
+  root.position.set(hip.x, bounds.min.y, hip.z);
   const bones = new Map();
   for (const name of JOINTS) {
     const spec=positions.get(name);
@@ -64,7 +68,7 @@ export function createGuide(bounds) {
     bone.name=name;
     const parent=spec.parent?bones.get(spec.parent):root;
     const worldPos=spec.position;
-    const parentWorld=spec.parent?positions.get(spec.parent).position:new THREE.Vector3();
+    const parentWorld=spec.parent?positions.get(spec.parent).position:root.position;
     bone.position.copy(worldPos).sub(parentWorld);
     parent.add(bone);
     bones.set(name,bone);
@@ -74,8 +78,14 @@ export function createGuide(bounds) {
 }
 
 export function moveJointWorld(guide,name,world) {
-  const bone=guide?.bones.get(name);
-  if(!bone || !world?.isVector3) return false;
+  if (!guide || !world?.isVector3) return false;
+  if (name === '__root__') {
+    guide.root.position.copy(world);
+    guide.root.updateMatrixWorld(true);
+    return true;
+  }
+  const bone=guide.bones.get(name);
+  if (!bone) return false;
   const p=bone.parent;
   p.updateWorldMatrix(true,false);
   bone.position.copy(p.worldToLocal(world.clone()));
@@ -84,6 +94,7 @@ export function moveJointWorld(guide,name,world) {
 }
 
 export function jointWorld(guide,name) {
+  if (guide && name === '__root__') return guide.root.getWorldPosition(new THREE.Vector3());
   const bone=guide?.bones.get(name);
   if(!bone) return null;
   bone.updateWorldMatrix(true,false);
@@ -98,6 +109,8 @@ export function serializeFit(guide,modelName) {
     units:'original Three.js GLB scene units',
     boundToMesh:false,
     skinWeights:false,
+    rootPosition:guide.root.position.toArray(),
+    rootScale:guide.root.scale.toArray(),
     note:'This is a fit guide, not a rigged or animated character. Skin weights must be generated and verified separately.',
     joints:[...guide.bones.entries()].map(([name,bone])=>({
       name,

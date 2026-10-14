@@ -59,7 +59,7 @@ const state = {
   clipName: 'New Animation', clipboard: null, busy: false, loading: false,
   rafStamp: 0, frameCarry: 0, toastTimer: null,
   rigGuide:null, rigVisual:null, rigMarkers:[], rigSelected:'mixamorigHips',
-  rigEnabled:true
+  rigEnabled:true, rigEditMode:'touch'
 };
 const alertUser = msg => {
   const e = $('toast');
@@ -128,6 +128,12 @@ function refreshRigFields() {
   const has=Boolean(rig);
   const selected=has ? jointWorld(rig,state.rigSelected) : null;
   $('autorig-selected').value=has ? state.rigSelected : '';
+  $('autorig-scale').disabled=!has;
+  $('autorig-scale').value=has ? String(Math.round(rig.root.scale.x*100)) : '100';
+  $('autorig-scale-value').textContent=has ? Math.round(rig.root.scale.x*100)+'%' : '100%';
+  $('autorig-front').disabled=!has;
+  $('autorig-side').disabled=!has;
+  $('autorig-arrows').disabled=!has;
   for(const axis of ['x','y','z']) {
     const field=$('autorig-'+axis);
     field.disabled=!has;
@@ -146,6 +152,10 @@ function refreshRigFields() {
     :has?'22 сустава размещены. Подгони положения; геометрия ещё НЕ привязана.'
     :'Режим без скелета. Можно добавить шаблон для подгонки суставов.';
   $('autorig-fit-state').classList.toggle('autorig-ready',has);
+  $('autorig-arrows').checked=state.rigEditMode==='arrows';
+  $('autorig-drag-tip').textContent=state.rigEditMode==='touch'
+    ? 'Режим пальца: коснись цветной точки и перетаскивай её по модели. Для глубины поверни вид сбоку.'
+    : 'Режим стрелок: двигай оси выбранного сустава. Выбор сустава — в списке.';
 }
 
 function syncRigMarkers() {
@@ -155,18 +165,19 @@ function syncRigMarkers() {
     const name=marker.userData.jointName;
     const position=jointWorld(state.rigGuide,name);
     if(position)marker.position.copy(position);
-    marker.material.color.setHex(name===state.rigSelected?0xff6ad8:0x16e7f5);
+    marker.material.color.setHex(name===state.rigSelected?0xff6ad8:name==='__root__'?0xffb854:0x16e7f5);
     marker.scale.setScalar(name===state.rigSelected?1.45:1);
     marker.visible=state.rigEnabled;
   }
   if(state.rigVisual)state.rigVisual.visible=state.rigEnabled;
-  rigTransform.getHelper().visible=state.rigEnabled && Boolean(rigTransform.object);
+  rigTransform.enabled=state.rigEnabled && state.rigEditMode==='arrows';
+  rigTransform.getHelper().visible=rigTransform.enabled && Boolean(rigTransform.object);
 }
 
 function chooseRigJoint(name) {
-  if(!state.rigGuide?.bones.has(name))return;
+  if(!state.rigGuide || (name!=='__root__'&&!state.rigGuide.bones.has(name)))return;
   state.rigSelected=name;
-  rigTransform.attach(state.rigGuide.bones.get(name));
+  rigTransform.attach(name==='__root__'?state.rigGuide.root:state.rigGuide.bones.get(name));
   syncRigMarkers();
   refreshRigFields();
 }
@@ -183,12 +194,16 @@ function addRigGuide(ask=false) {
     state.rigGuide=guide;
     scene.add(guide.root);
     const helper=new THREE.SkeletonHelper(guide.root);
+    helper.material.depthTest=false;
+    helper.material.transparent=true;
+    helper.material.opacity=.9;
+    helper.renderOrder=970;
     state.rigVisual=helper;
     scene.add(helper);
     const radius=Math.max(.004,guide.height*.009);
-    for(const name of JOINTS){
+    for(const name of ['__root__',...JOINTS]){
       const marker=new THREE.Mesh(
-        new THREE.SphereGeometry(radius,8,6),
+        new THREE.SphereGeometry(name==='__root__'?radius*1.5:radius,12,9),
         new THREE.MeshBasicMaterial({color:0x16e7f5,depthTest:false,transparent:true,opacity:.94})
       );
       marker.name='GuideMarker_'+name;
@@ -198,6 +213,7 @@ function addRigGuide(ask=false) {
       state.rigMarkers.push(marker);
     }
     state.rigEnabled=true;
+    state.rigEditMode='touch';
     $('autorig-visible').checked=true;
     chooseRigJoint('mixamorigHips');
     refreshRigFields();
@@ -237,23 +253,83 @@ async function saveRigGuide() {
   }
 }
 
+// Tablet-first positioning: invisible camera-facing plane at joint depth.
+// Intercepts the touch before OrbitControls starts orbiting the camera.
 const rigRaycaster=new THREE.Raycaster();
 const rigPointer=new THREE.Vector2();
-let pointerStart=null,usedTransform=false;
-renderer.domElement.addEventListener('pointerdown',event=>{
-  pointerStart={x:event.clientX,y:event.clientY};
-  usedTransform=false;
-});
-rigTransform.addEventListener('dragging-changed',event=>{if(event.value)usedTransform=true;});
-renderer.domElement.addEventListener('pointerup',event=>{
-  if(!pointerStart||!state.rigGuide||!state.rigEnabled||usedTransform)return;
-  if(Math.hypot(event.clientX-pointerStart.x,event.clientY-pointerStart.y)>12)return;
-  const rect=renderer.domElement.getBoundingClientRect();
-  rigPointer.set((event.clientX-rect.left)/rect.width*2-1,-(event.clientY-rect.top)/rect.height*2+1);
+const rigDragPlane=new THREE.Plane();
+let rigDrag=null;
+const dom=renderer.domElement;
+function pointerRay(x,y) {
+  const rect=dom.getBoundingClientRect();
+  rigPointer.set((x-rect.left)/rect.width*2-1,-(y-rect.top)/rect.height*2+1);
   rigRaycaster.setFromCamera(rigPointer,camera);
-  const hits=rigRaycaster.intersectObjects(state.rigMarkers,false);
-  if(hits.length)chooseRigJoint(hits[0].object.userData.jointName);
-});
+  return rigRaycaster.ray;
+}
+function closestGuidePoint(x,y,touch) {
+  if(!state.rigGuide || !state.rigEnabled) return null;
+  const rect=dom.getBoundingClientRect();
+  const maxDistance=touch?46:30;
+  let closest=null, distance=maxDistance;
+  for(const marker of state.rigMarkers) {
+    if(!marker.visible)continue;
+    const screen=marker.position.clone().project(camera);
+    if(screen.z < -1 || screen.z > 1)continue;
+    const px=rect.left+(screen.x+1)*rect.width/2;
+    const py=rect.top+(1-screen.y)*rect.height/2;
+    const d=Math.hypot(x-px,y-py);
+    if(d<distance) {distance=d;closest=marker.userData.jointName;}
+  }
+  return closest;
+}
+function dragRelease(event) {
+  if (!rigDrag || event.pointerId!==rigDrag.id) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  rigDrag=null;
+  try{if(dom.hasPointerCapture(event.pointerId))dom.releasePointerCapture(event.pointerId);}catch{}
+  orbit.enabled=true;
+  refreshRigFields();
+}
+// Capture-phase handler runs before OrbitControls and TransformControls.
+dom.addEventListener('pointerdown',event=>{
+  if(rigDrag){
+    event.stopImmediatePropagation();
+    event.preventDefault();
+    return;
+  }
+  if(!state.rigGuide || !state.rigEnabled || state.rigEditMode!=='touch' ||
+    event.button!==0 || state.busy)return;
+  const name=closestGuidePoint(event.clientX,event.clientY,event.pointerType==='touch');
+  if(!name)return; // empty viewport still rotates/zooms normally
+  chooseRigJoint(name);
+  const point=jointWorld(state.rigGuide,name);
+  const normal=new THREE.Vector3();
+  camera.getWorldDirection(normal);
+  rigDragPlane.setFromNormalAndCoplanarPoint(normal,point);
+  const intersection=pointerRay(event.clientX,event.clientY).intersectPlane(rigDragPlane,new THREE.Vector3());
+  if(!intersection)return;
+  rigDrag={id:event.pointerId,name,offset:point.clone().sub(intersection)};
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  orbit.enabled=false;
+  dom.setPointerCapture(event.pointerId);
+},true);
+dom.addEventListener('pointermove',event=>{
+  if(!rigDrag || event.pointerId!==rigDrag.id)return;
+  event.preventDefault();event.stopImmediatePropagation();
+  const intersection=pointerRay(event.clientX,event.clientY).intersectPlane(rigDragPlane,new THREE.Vector3());
+  if(!intersection)return;
+  moveJointWorld(state.rigGuide,rigDrag.name,intersection.add(rigDrag.offset));
+  syncRigMarkers();
+  // Avoid rebuilding full panel on every high-frequency pointer event.
+  for(const axis of ['x','y','z']) {
+    const value=jointWorld(state.rigGuide,rigDrag.name)[axis];
+    if(document.activeElement!==$('autorig-'+axis))$('autorig-'+axis).value=value.toFixed(4);
+  }
+},true);
+dom.addEventListener('pointerup',dragRelease,true);
+dom.addEventListener('pointercancel',dragRelease,true);
 
 function resourceManager(files) {
   const urls = [], byName = new Map();
@@ -732,6 +808,34 @@ onButton('autorig-remove',()=>{
   alertUser('Шаблон удалён. Модель не изменена.');
 });
 onButton('autorig-save',saveRigGuide);
+$('autorig-scale').addEventListener('input',event=>{
+  if(!state.rigGuide || state.busy)return;
+  const percent=THREE.MathUtils.clamp(Number(event.target.value)||100,50,175);
+  state.rigGuide.root.scale.setScalar(percent/100);
+  state.rigGuide.root.updateMatrixWorld(true);
+  $('autorig-scale-value').textContent=Math.round(percent)+'%';
+  syncRigMarkers();
+  refreshRigFields();
+});
+function showRigView(side=false) {
+  if(!state.root)return;
+  const box=new THREE.Box3().setFromObject(state.root);
+  if(box.isEmpty())return;
+  const center=box.getCenter(new THREE.Vector3());
+  const length=Math.max(box.getSize(new THREE.Vector3()).length(),.1);
+  const d=length/Math.tan(THREE.MathUtils.degToRad(camera.fov*.5))*1.0;
+  orbit.target.copy(center);
+  camera.position.copy(center).add(side?new THREE.Vector3(d,0,0):new THREE.Vector3(0,0,d));
+  orbit.update();
+  syncRigMarkers();
+}
+onButton('autorig-front',()=>showRigView(false));
+onButton('autorig-side',()=>showRigView(true));
+$('autorig-arrows').addEventListener('change',event=>{
+  state.rigEditMode=event.target.checked?'arrows':'touch';
+  syncRigMarkers();
+  refreshRigFields();
+});
 $('autorig-selected').addEventListener('change',event=>chooseRigJoint(event.target.value));
 $('autorig-visible').addEventListener('change',event=>{
   state.rigEnabled=event.target.checked;
