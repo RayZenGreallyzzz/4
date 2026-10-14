@@ -62,3 +62,7 @@ The torso approximation is *not automatic anatomy recognition*. It is a more rel
 ## Snap joint to actual geometry (v0.6)
 
 For precise manual correction after torso fitting, select a joint, press **Поставить сустав касанием тела**, then tap the target elbow/knee/shoulder on the 3D model. The app raycasts against the model's mesh surfaces, calculates a point slightly inside the first surface hit and moves the selected skeleton joint there. Small body parts use a shallower inset. This avoids having to scroll and manually enter world coordinates for every joint. The interaction automatically exits after a valid mesh hit; pressing the same button cancels it. It does not estimate skin weights.
+
+## Официальная иконка лаунчера
+
+Android Launcher теперь использует утверждённый дизайн из второго концепта: неоновая карточка с сурикатом, надписью ANIMATION STUDIO и цианово-пурпурной рамкой. В репозитории хранится оптимизированный локальный WebP (`branding/android/animation_icon.webp`), который GitHub Actions устанавливает как адаптивную и обычную круглую/квадратную иконку. Старые стандартные значки Capacitor удаляются перед сборкой APK. Favicon веб-редактора соответствует иконке приложения.

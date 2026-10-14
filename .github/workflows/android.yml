@@ -31,6 +31,21 @@ jobs:
           mkdir -p android/app/src/main/java/com/rayzeng/animationstudio
           cp branding/android/native/MainActivity.java android/app/src/main/java/com/rayzeng/animationstudio/MainActivity.java
           cp branding/android/native/NativeFileSaverPlugin.java android/app/src/main/java/com/rayzeng/animationstudio/NativeFileSaverPlugin.java
+      - name: Apply custom neon Animation Studio launcher icon
+        run: |
+          # Replace Capacitor defaults on both Android 8+ adaptive and older launchers.
+          mkdir -p android/app/src/main/res/drawable-nodpi
+          mkdir -p android/app/src/main/res/mipmap-anydpi-v26
+          cp branding/android/animation_icon.webp android/app/src/main/res/drawable-nodpi/animation_icon.webp
+          cp branding/android/ic_launcher.xml android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+          cp branding/android/ic_launcher.xml android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+          for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            dir="android/app/src/main/res/mipmap-$density"
+            mkdir -p "$dir"
+            rm -f "$dir/ic_launcher.png" "$dir/ic_launcher_round.png"
+            cp branding/android/animation_icon.webp "$dir/ic_launcher.webp"
+            cp branding/android/animation_icon.webp "$dir/ic_launcher_round.webp"
+          done
       - name: Sync web editor
         run: npx cap sync android
       - name: Assemble Android APK
