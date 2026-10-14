@@ -74,7 +74,7 @@ export function createGuide(bounds) {
     bones.set(name,bone);
   }
   root.updateMatrixWorld(true);
-  return {root,bones,height};
+  return {root,bones,height,chains:[]};
 }
 
 export function moveJointWorld(guide,name,world) {
@@ -101,6 +101,66 @@ export function jointWorld(guide,name) {
   return bone.getWorldPosition(new THREE.Vector3());
 }
 
+const customTypes = {
+  tail: {base:'Tail',parent:'mixamorigHips',start:[0,-.025,-.10],end:[0,-.16,-.47]},
+  earLeft: {base:'LeftEar',parent:'mixamorigHead',start:[+.06,+.015,0],end:[+.11,+.16,0]},
+  earRight: {base:'RightEar',parent:'mixamorigHead',start:[-.06,+.015,0],end:[-.11,+.16,0]},
+  wingLeft: {base:'LeftWing',parent:'mixamorigSpine2',start:[+.13,0,-.07],end:[+.51,+.03,-.16]},
+  wingRight: {base:'RightWing',parent:'mixamorigSpine2',start:[-.13,0,-.07],end:[-.51,+.03,-.16]},
+  hair: {base:'Hair',parent:'mixamorigHead',start:[0,+.065,-.045],end:[0,-.25,-.13]},
+  tentacle: {base:'Tentacle',parent:'mixamorigHips',start:[+.09,-.02,-.06],end:[+.2,-.26,-.44]}
+};
+export const EXTRA_CHAIN_TYPES = Object.keys(customTypes);
+
+// Places a chain as true nested THREE.Bones inside the existing guide.
+// It deliberately does not bind any mesh to the newly introduced bones.
+export function addGuideChain(guide,type='tail',count=5) {
+  if(!guide?.root || !guide?.bones?.size) throw new Error('Сначала добавь гуманоидный скелет');
+  const spec=customTypes[type];
+  if(!spec) throw new Error('Неизвестный тип цепочки');
+  const amount=Number(count);
+  if(!Number.isInteger(amount)||amount<2||amount>12)throw new Error('Количество костей: от 2 до 12');
+  const parent=guide.bones.get(spec.parent);
+  if(!parent)throw new Error('Не найдена родительская кость: '+spec.parent);
+  const base=spec.base;
+  let number=1;
+  const prefix=()=>base+(number===1?'':number)+'_';
+  while([...guide.bones.keys()].some(name=>name.startsWith(prefix())))number++;
+  const id=base+(number===1?'':number);
+  const anchor=jointWorld(guide,spec.parent);
+  const start=anchor.clone().add(new THREE.Vector3(...spec.start).multiplyScalar(guide.height));
+  const end=anchor.clone().add(new THREE.Vector3(...spec.end).multiplyScalar(guide.height));
+  const names=[];
+  let owner=parent;
+  for(let i=0;i<amount;i++){
+    const name=id+'_'+String(i+1).padStart(2,'0');
+    const bone=new THREE.Bone();
+    bone.name=name;
+    const desired=start.clone().lerp(end,i/(amount-1));
+    owner.add(bone);
+    owner.updateWorldMatrix(true,false);
+    bone.position.copy(owner.worldToLocal(desired));
+    guide.bones.set(name,bone);
+    names.push(name);
+    owner=bone;
+  }
+  guide.root.updateMatrixWorld(true,true);
+  const chain={id,type,parent:spec.parent,names};
+  if(!guide.chains)guide.chains=[];
+  guide.chains.push(chain);
+  return chain;
+}
+
+export function removeGuideChain(guide,id) {
+  const idx=guide?.chains?.findIndex(entry=>entry.id===id)??-1;
+  if(idx<0)return false;
+  const [chain]=guide.chains.splice(idx,1);
+  guide.bones.get(chain.names[0])?.removeFromParent();
+  for(const name of chain.names)guide.bones.delete(name);
+  guide.root.updateMatrixWorld(true,true);
+  return true;
+}
+
 export function serializeFit(guide,modelName) {
   if(!guide)throw Error('Шаблон отсутствует');
   return {
@@ -111,6 +171,7 @@ export function serializeFit(guide,modelName) {
     skinWeights:false,
     rootPosition:guide.root.position.toArray(),
     rootScale:guide.root.scale.toArray(),
+    chains:(guide.chains||[]).map(chain=>({id:chain.id,type:chain.type,parent:chain.parent,bones:[...chain.names]})),
     note:'This is a fit guide, not a rigged or animated character. Skin weights must be generated and verified separately.',
     joints:[...guide.bones.entries()].map(([name,bone])=>({
       name,

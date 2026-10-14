@@ -88,6 +88,28 @@
         </div>
         <label class="toggle-line autorig-toggle"><input type="checkbox" id="autorig-visible" disabled checked/> Показывать суставы</label>
         <label class="toggle-line autorig-toggle"><input type="checkbox" id="autorig-arrows" disabled/> Режим стрелок (вместо перемещения пальцем)</label>
+        <div class="custom-chain-panel">
+          <h4>✦ Дополнительные кости</h4>
+          <p id="chain-status" class="hint">Добавь хвост, уши, крылья или волосы отдельной цепочкой.</p>
+          <label class="field-label" for="chain-type">Что добавляем?</label>
+          <select id="chain-type" class="full-width" disabled>
+            <option value="tail">🐈 Хвост (к тазу)</option>
+            <option value="earLeft">Левое ухо (к голове)</option>
+            <option value="earRight">Правое ухо (к голове)</option>
+            <option value="wingLeft">Левое крыло (к груди)</option>
+            <option value="wingRight">Правое крыло (к груди)</option>
+            <option value="hair">Прядь волос (к голове)</option>
+            <option value="tentacle">Щупальце (к тазу)</option>
+          </select>
+          <label class="chain-count">Количество костей <span id="chain-count-label">5 костей</span>
+            <input type="range" id="chain-count" min="2" max="12" value="5" step="1" disabled/>
+          </label>
+          <button id="chain-add" type="button" class="button cyan full-width" disabled>＋ Добавить цепочку</button>
+          <label class="field-label" for="chain-list">Добавленные цепочки</label>
+          <select id="chain-list" class="full-width" disabled><option value="">Цепочек пока нет</option></select>
+          <button id="chain-remove" type="button" class="button outline full-width" disabled>× Удалить выбранную цепочку</button>
+          <p class="hint">Кости цепочки появятся в списке суставов выше. Выставляй их вдоль хвоста или крыла по одной, пальцем либо координатами X/Y/Z.</p>
+        </div>
         <div class="action-grid autorig-actions">
           <button type="button" id="autorig-save" class="button violet" disabled>▣ Сохранить подгонку JSON</button>
           <button type="button" id="autorig-reset" class="button outline" disabled>↺ Сброс шаблона</button>

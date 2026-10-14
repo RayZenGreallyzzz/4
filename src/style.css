@@ -38,3 +38,14 @@
 .autorig-scale-line span{color:#38ebfa}
 .autorig-scale-line input{grid-column:1/-1;width:100%;min-height:31px;accent-color:#1ee5ee;touch-action:pan-y}
 .autorig-toggle{margin:8px 0 10px;line-height:1.5}
+
+/* AutoRig stage 1B — lightweight custom joint chain editor. */
+.custom-chain-panel{margin:15px 0;padding:13px 11px;background:linear-gradient(140deg,#22253f,#102d3d);border:1px solid #466080;border-radius:12px;display:grid;gap:8px}
+.custom-chain-panel h4{margin:0;font-size:12px;letter-spacing:.4px;color:#befaff}
+.custom-chain-panel .hint{margin:0;font-size:10px;line-height:1.45}
+.custom-chain-panel .field-label{margin:2px 0 0}
+.custom-chain-panel select{width:100%;margin:0}
+.custom-chain-panel .chain-count{font-size:11px;color:#b7d7f1;display:grid;gap:6px}
+.custom-chain-panel .chain-count span{float:right;color:#2df5ee}
+.custom-chain-panel input[type=range]{width:100%;accent-color:#1be3f7;touch-action:pan-y;min-height:28px}
+.custom-chain-panel button{min-height:36px}

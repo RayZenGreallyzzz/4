@@ -58,3 +58,49 @@ test('template anchored under off-origin model can be scaled and moved as a whol
   assert.equal(result.rootScale[0],1.25);
   assert.ok(Math.abs(result.rootPosition[0]-10.4)<1e-5);
 });
+
+
+test('extra tail bone chain follows hips, survives fitting and serializes',async()=>{
+  const {addGuideChain,removeGuideChain}=await import('../src/autorig.js');
+  const guide=createGuide(new THREE.Box3(new THREE.Vector3(-.6,0,-.4),new THREE.Vector3(.6,2,.4)));
+  const tail=addGuideChain(guide,'tail',5);
+  assert.equal(tail.names.length,5);
+  assert.equal(guide.bones.size,27);
+  assert.equal(guide.bones.get(tail.names[0]).parent,guide.bones.get('mixamorigHips'));
+  for(let i=1;i<5;i++)assert.equal(guide.bones.get(tail.names[i]).parent,guide.bones.get(tail.names[i-1]));
+  const tip=jointWorld(guide,tail.names[4]).clone();
+  const hip=jointWorld(guide,'mixamorigHips');
+  moveJointWorld(guide,'mixamorigHips',hip.add(new THREE.Vector3(.13,0,0)));
+  assert.ok(Math.abs(jointWorld(guide,tail.names[4]).x-tip.x-.13)<1e-5);
+  const serialized=serializeFit(guide,'cat.glb');
+  assert.equal(serialized.chains[0].id,'Tail');
+  assert.equal(serialized.chains[0].bones.length,5);
+  assert.equal(serialized.boundToMesh,false);
+  assert.ok(removeGuideChain(guide,tail.id));
+  assert.equal(guide.bones.size,22);
+  assert.equal(guide.chains.length,0);
+});
+
+test('two separate chains have unique names and can be removed independently', async()=>{
+  const {addGuideChain,removeGuideChain}=await import('../src/autorig.js');
+  const guide=createGuide(new THREE.Box3(new THREE.Vector3(-1,0,-1),new THREE.Vector3(1,2,1)));
+  const a=addGuideChain(guide,'tail',3);
+  const b=addGuideChain(guide,'tail',4);
+  assert.notEqual(a.id,b.id);
+  assert.equal(guide.bones.size,29);
+  assert.ok(removeGuideChain(guide,a.id));
+  assert.equal(guide.bones.size,26);
+  assert.deepEqual(guide.chains.map(x=>x.id),[b.id]);
+  assert.throws(()=>addGuideChain(guide,'tail',13),/от 2 до 12/);
+  assert.throws(()=>addGuideChain(guide,'unrecognized',5),/Неизвестный/);
+});
+
+test('extra ears/wing chain attaches to requested parent', async()=>{
+  const {addGuideChain}=await import('../src/autorig.js');
+  const guide=createGuide(new THREE.Box3(new THREE.Vector3(-1,0,-.5),new THREE.Vector3(1,2,.5)));
+  const ear=addGuideChain(guide,'earLeft',2);
+  const wing=addGuideChain(guide,'wingRight',6);
+  assert.equal(guide.bones.get(ear.names[0]).parent.name,'mixamorigHead');
+  assert.equal(guide.bones.get(wing.names[0]).parent.name,'mixamorigSpine2');
+  assert.equal(serializeFit(guide,'a.glb').joints.length,30);
+});

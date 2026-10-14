@@ -6,7 +6,7 @@ import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { FPS, MAX_FRAMES, Timeline, boneLookup, compileClip, clampFrame } from './timeline.js';
-import { JOINTS, createGuide, jointWorld, moveJointWorld, serializeFit } from './autorig.js';
+import { JOINTS, createGuide, jointWorld, moveJointWorld, serializeFit, addGuideChain, removeGuideChain } from './autorig.js';
 import './style.css';
 
 const $ = id => document.getElementById(id);
@@ -121,6 +121,7 @@ function disposeRigGuide() {
     scene.remove(state.rigGuide.root);
     state.rigGuide=null;
   }
+  updateChainMenu();
 }
 
 function refreshRigFields() {
@@ -147,9 +148,23 @@ function refreshRigFields() {
   $('autorig-visible').disabled=!has;
   $('autorig-add').disabled=!state.root||!!state.bones.length||state.busy;
   $('autorig-add').textContent=has?'↺ Перестроить шаблон':'✦ Добавить скелет';
+  $('chain-add').disabled=!has || state.busy;
+  $('chain-count').disabled=!has || state.busy;
+  $('chain-type').disabled=!has || state.busy;
+  const hasChains=!!rig?.chains?.length;
+  $('chain-remove').disabled=!hasChains || state.busy;
+  const chosen=rig?.chains?.find(chain=>chain.names.includes(state.rigSelected));
+  if(chosen)$('chain-list').value=chosen.id;
+  else if(hasChains&&!rig.chains.some(chain=>chain.id===$('chain-list').value))$('chain-list').value=rig.chains[0].id;
+  $('chain-list').disabled=!hasChains || state.busy;
+  $('chain-count-label').textContent=$('chain-count').value+' костей';
+  $('chain-status').textContent=has ? (hasChains
+    ? 'Дополнительных цепочек: '+rig.chains.length+'. Все суставы включены в сохранение JSON.'
+    : 'Добавь хвост, уши, крылья или волосы с отдельными костями.')
+    : 'Сначала подгони основное тело, затем добавляй новые цепочки.';
   $('autorig-fit-state').textContent=!state.root?'Сначала загрузи модель GLB/FBX.'
     :state.bones.length?'У персонажа уже есть кости — шаблон не нужен.'
-    :has?'22 сустава размещены. Подгони положения; геометрия ещё НЕ привязана.'
+    :has?rig.bones.size+' суставов размещены. Подгони положения; геометрия ещё НЕ привязана.'
     :'Режим без скелета. Можно добавить шаблон для подгонки суставов.';
   $('autorig-fit-state').classList.toggle('autorig-ready',has);
   $('autorig-arrows').checked=state.rigEditMode==='arrows';
@@ -177,9 +192,91 @@ function syncRigMarkers() {
 function chooseRigJoint(name) {
   if(!state.rigGuide || (name!=='__root__'&&!state.rigGuide.bones.has(name)))return;
   state.rigSelected=name;
+  $('autorig-selected').value=name;
   rigTransform.attach(name==='__root__'?state.rigGuide.root:state.rigGuide.bones.get(name));
   syncRigMarkers();
   refreshRigFields();
+}
+
+function makeRigMarker(name) {
+  const rig=state.rigGuide;
+  if(!rig)return;
+  const radius=Math.max(.004,rig.height*.009);
+  const marker=new THREE.Mesh(
+    new THREE.SphereGeometry(name==='__root__'?radius*1.5:radius,12,9),
+    new THREE.MeshBasicMaterial({color:0x16e7f5,depthTest:false,transparent:true,opacity:.94})
+  );
+  marker.name='GuideMarker_'+name;
+  marker.userData.jointName=name;
+  marker.renderOrder=999;
+  scene.add(marker);
+  state.rigMarkers.push(marker);
+}
+function refreshGuideSkeletonHelper() {
+  if(!state.rigGuide)return;
+  if(state.rigVisual){
+    scene.remove(state.rigVisual);
+    state.rigVisual.geometry.dispose();
+    state.rigVisual.material.dispose();
+  }
+  const helper=new THREE.SkeletonHelper(state.rigGuide.root);
+  helper.material.depthTest=false;
+  helper.material.transparent=true;
+  helper.material.opacity=.9;
+  helper.renderOrder=970;
+  helper.visible=state.rigEnabled;
+  state.rigVisual=helper;
+  scene.add(helper);
+}
+function updateChainMenu() {
+  const select=$('chain-list');
+  select.replaceChildren();
+  const chains=state.rigGuide?.chains||[];
+  for(const chain of chains) select.add(new Option(chain.id+' · '+chain.names.length+' костей',chain.id));
+  if(!chains.length)select.add(new Option('Цепочек пока нет',''));
+  select.disabled=!chains.length;
+}
+function createCustomChain() {
+  if(!state.rigGuide)return alertUser('Сначала добавь основной скелет');
+  try{
+    const type=$('chain-type').value;
+    const amount=Number($('chain-count').value);
+    const chain=addGuideChain(state.rigGuide,type,amount);
+    for(const name of chain.names) {
+      makeRigMarker(name);
+      $('autorig-selected').add(new Option(name,name));
+    }
+    refreshGuideSkeletonHelper();
+    updateChainMenu();
+    $('chain-list').value=chain.id;
+    chooseRigJoint(chain.names[0]);
+    refreshRigFields();
+    alertUser('Цепочка '+chain.id+' создана. Перемещай суставы пальцем, каждый отдельно.');
+  }catch(error){alertUser('Ошибка цепочки: '+(error?.message||String(error)));}
+}
+function deleteCustomChain() {
+  if(!state.rigGuide)return;
+  const id=$('chain-list').value;
+  const found=state.rigGuide.chains?.find(c=>c.id===id);
+  if(!found)return;
+  if(!window.confirm('Удалить цепочку '+id+'? Основной скелет и модель сохранятся.'))return;
+  if(found.names.includes(state.rigSelected))chooseRigJoint('mixamorigHips');
+  if(!removeGuideChain(state.rigGuide,id))return;
+  const names=new Set(found.names);
+  for(const option of [...$('autorig-selected').options]){
+    if(names.has(option.value))option.remove();
+  }
+  state.rigMarkers=state.rigMarkers.filter(marker=>{
+    if(!names.has(marker.userData.jointName))return true;
+    scene.remove(marker);
+    marker.geometry.dispose();marker.material.dispose();
+    return false;
+  });
+  refreshGuideSkeletonHelper();
+  updateChainMenu();
+  syncRigMarkers();
+  refreshRigFields();
+  alertUser('Цепочка '+id+' удалена.');
 }
 
 function addRigGuide(ask=false) {
@@ -191,27 +288,15 @@ function addRigGuide(ask=false) {
     const bounds=new THREE.Box3().setFromObject(state.root);
     const guide=createGuide(bounds);
     disposeRigGuide();
+    // Retain only the canonical 22 body joints after rebuilding the template.
+    for(const option of [...$('autorig-selected').options]){
+      if(option.value && option.value!=='__root__' && !JOINTS.includes(option.value)) option.remove();
+    }
     state.rigGuide=guide;
     scene.add(guide.root);
-    const helper=new THREE.SkeletonHelper(guide.root);
-    helper.material.depthTest=false;
-    helper.material.transparent=true;
-    helper.material.opacity=.9;
-    helper.renderOrder=970;
-    state.rigVisual=helper;
-    scene.add(helper);
-    const radius=Math.max(.004,guide.height*.009);
-    for(const name of ['__root__',...JOINTS]){
-      const marker=new THREE.Mesh(
-        new THREE.SphereGeometry(name==='__root__'?radius*1.5:radius,12,9),
-        new THREE.MeshBasicMaterial({color:0x16e7f5,depthTest:false,transparent:true,opacity:.94})
-      );
-      marker.name='GuideMarker_'+name;
-      marker.userData.jointName=name;
-      marker.renderOrder=999;
-      scene.add(marker);
-      state.rigMarkers.push(marker);
-    }
+    refreshGuideSkeletonHelper();
+    for(const name of ['__root__',...JOINTS])makeRigMarker(name);
+    updateChainMenu();
     state.rigEnabled=true;
     state.rigEditMode='touch';
     $('autorig-visible').checked=true;
@@ -808,6 +893,15 @@ onButton('autorig-remove',()=>{
   alertUser('Шаблон удалён. Модель не изменена.');
 });
 onButton('autorig-save',saveRigGuide);
+onButton('chain-add',createCustomChain);
+onButton('chain-remove',deleteCustomChain);
+$('chain-count').addEventListener('input',event=>{
+  $('chain-count-label').textContent=event.target.value+' костей';
+});
+$('chain-list').addEventListener('change',event=>{
+  const found=state.rigGuide?.chains?.find(c=>c.id===event.target.value);
+  if(found)chooseRigJoint(found.names[0]);
+});
 $('autorig-scale').addEventListener('input',event=>{
   if(!state.rigGuide || state.busy)return;
   const percent=THREE.MathUtils.clamp(Number(event.target.value)||100,50,175);
