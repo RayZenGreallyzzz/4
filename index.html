@@ -125,12 +125,24 @@
           <button id="chain-remove" type="button" class="button outline full-width" disabled>× Удалить выбранную цепочку</button>
           <p class="hint">Кости цепочки появятся в списке суставов выше. Выставляй их вдоль хвоста или крыла по одной, пальцем либо координатами X/Y/Z.</p>
         </div>
+
+        <section class="skin-bind-panel">
+          <strong>06A · ПРИВЯЗКА К ТЕЛУ (AUTOSKIN)</strong>
+          <p>Нажми после подгонки. Программа рассчитает веса вершин, создаст реальный SkinnedMesh и подключит к нему кости, в том числе хвост.</p>
+          <button id="autorig-bind" type="button" class="button cyan full-width" disabled>✦ ПРИВЯЗАТЬ МОДЕЛЬ К СКЕЛЕТУ</button>
+          <p id="autorig-bind-info" class="hint">Обязательно проверь сгибы суставов, броню и хвост перед использованием в игре.</p>
+          <div class="fit-backup-row">
+            <button type="button" id="autorig-load-file" class="button outline" disabled>↥ Загрузить подгонку JSON</button>
+            <button type="button" id="autorig-recover" class="button outline" disabled>↺ Черновик подгонки</button>
+          </div>
+          <p class="hint">Черновик сохраняется на устройстве. Для переноса на другую APK или устройство используй «Сохранить подгонку JSON» ниже.</p>
+        </section>
         <div class="action-grid autorig-actions">
           <button type="button" id="autorig-save" class="button violet" disabled>▣ Сохранить подгонку JSON</button>
           <button type="button" id="autorig-reset" class="button outline" disabled>↺ Сброс шаблона</button>
           <button type="button" id="autorig-remove" class="button outline" disabled>× Убрать шаблон</button>
         </div>
-        <p class="hint autorig-warning">Этап 1: AutoRig сначала оценивает центр тела по реальным вершинам мешей. Если персонаж смотрит назад или вбок — исправь направление выше и пересчитай. Затем выбирай точку и перетаскивай пальцем. Вид «Спереди» — для ширины и высоты, «Сбоку» — для глубины. Масштаб и сдвиг всего скелета — выше. Суставы можно также двигать стрелками или вводить координаты. Это НЕ готовый риг: привязка вершин и веса кожи будут отдельным этапом. Экспорт GLB пока сохраняет модель без шаблона; координаты суставов — отдельно в JSON.</p>
+        <p class="hint autorig-warning">Этап 1: AutoRig сначала оценивает центр тела по реальным вершинам мешей. Если персонаж смотрит назад или вбок — исправь направление выше и пересчитай. Затем выбирай точку и перетаскивай пальцем. Вид «Спереди» — для ширины и высоты, «Сбоку» — для глубины. Масштаб и сдвиг всего скелета — выше. Суставы можно также двигать стрелками или вводить координаты. До нажатия «Привязать модель к скелету» это только шаблон. После привязки обязательно проверь вращение костей, а затем сохраняй GLB.</p>
       </section>
       <section class="panel bones-panel">
         <h3><span class="badge-number">03</span> Скелет <small id="bones-count">0 / 0</small></h3>
@@ -182,5 +194,6 @@
 <div id="loading-overlay" class="loading-overlay hidden"><div class="loading-card"><div class="loading-crown">♛</div><strong>ANIMATION STUDIO</strong><p>Загружаем 3D-модель</p><small id="loading-name"></small><div class="loading-track"><div></div></div></div></div>
 <div id="toast" role="status" aria-live="polite"></div>
 <input id="model-file" type="file" accept=".glb,.gltf,.fbx,.bin,.png,.jpg,.jpeg,.webp" multiple hidden/>
+<input id="fit-file" type="file" accept=".json,application/json" hidden/>
 <script type="module" src="/src/main.js"></script>
 </body></html>

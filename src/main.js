@@ -6,7 +6,8 @@ import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { FPS, MAX_FRAMES, Timeline, boneLookup, compileClip, clampFrame } from './timeline.js';
-import { JOINTS, createGuide, jointWorld, moveJointWorld, serializeFit, addGuideChain, removeGuideChain } from './autorig.js';
+import { JOINTS, createGuide, jointWorld, moveJointWorld, serializeFit, restoreFit, addGuideChain, removeGuideChain } from './autorig.js';
+import { bindRigToMeshes } from './skinning.js';
 import { fitGuideToGeometry } from './bodyfit.js';
 import './style.css';
 
@@ -60,7 +61,7 @@ const state = {
   clipName: 'New Animation', clipboard: null, busy: false, loading: false,
   rafStamp: 0, frameCarry: 0, toastTimer: null,
   rigGuide:null, rigVisual:null, rigMarkers:[], rigSelected:'mixamorigHips',
-  rigEnabled:true, rigEditMode:'touch', rigSnapMode:false
+  rigEnabled:true, rigEditMode:'touch', rigSnapMode:false, rigBound:false
 };
 const alertUser = msg => {
   const e = $('toast');
@@ -96,14 +97,14 @@ function disposeModel() {
   Object.assign(state, {
     root:null,modelName:null,bones:[],lookup:new Map(),bind:new Map(),
     sourceClips:[],sourceIndex:-1,mixer:null,action:null,
-    selected:null,skeleton:null,frame:0,frames:90,clipName:'New Animation'
+    selected:null,skeleton:null,frame:0,frames:90,clipName:'New Animation',rigBound:false
   });
   state.timeline.clear();
   state.clipboard = null;
 }
 
 // AutoRig stage 1: fit guide only, intentionally not an animated/weighted mesh.
-function disposeRigGuide() {
+function disposeRigGuide(keepRoot=false) {
   state.rigSnapMode=false;
   rigTransform.detach();
   rigTransform.getHelper().visible=false;
@@ -120,7 +121,7 @@ function disposeRigGuide() {
   }
   state.rigMarkers=[];
   if (state.rigGuide) {
-    scene.remove(state.rigGuide.root);
+    if(!keepRoot)state.rigGuide.root.removeFromParent();
     state.rigGuide=null;
   }
   updateChainMenu();
@@ -134,6 +135,9 @@ function refreshRigFields() {
   $('autorig-scale').disabled=!has;
   $('autorig-direction').disabled=!has;
   $('autorig-geometry-fit').disabled=!has || state.busy;
+  $('autorig-bind').disabled=!has || state.busy;
+  $('autorig-recover').disabled=!state.root || !!state.bones.length || state.busy || !hasFitBackup();
+  $('autorig-load-file').disabled=!state.root || !!state.bones.length || state.busy;
   $('autorig-snap').disabled=!has || state.busy;
   $('autorig-snap').textContent=state.rigSnapMode
     ? '× Отменить выбор точки'
@@ -174,8 +178,8 @@ function refreshRigFields() {
   $('autorig-fit-state').textContent=!state.root?'Сначала загрузи модель GLB/FBX.'
     :state.bones.length?'У персонажа уже есть кости — шаблон не нужен.'
     :has?(rig.lastFit
-      ? rig.bones.size+' костей · анализ '+rig.lastFit.samples+' вершин. Центр корпуса подогнан по геометрии. Уточни суставы вручную.'
-      : rig.bones.size+' суставов по шаблону. Примени анализ геометрии.')
+      ? rig.bones.size+' костей · подгонка готова. Нажми «Привязать модель к скелету» перед экспортом GLB.'
+      : rig.bones.size+' суставов по шаблону. Подгони их, затем привяжи модель.')
     :'Модель без скелета. После добавления AutoRig анализирует реальную геометрию корпуса.';
   $('autorig-fit-state').classList.toggle('autorig-ready',has);
   $('autorig-arrows').checked=state.rigEditMode==='arrows';
@@ -262,6 +266,7 @@ function createCustomChain() {
     $('chain-list').value=chain.id;
     chooseRigJoint(chain.names[0]);
     refreshRigFields();
+    saveFitDraft();
     alertUser('Цепочка '+chain.id+' создана. Перемещай суставы пальцем, каждый отдельно.');
   }catch(error){alertUser('Ошибка цепочки: '+(error?.message||String(error)));}
 }
@@ -287,6 +292,7 @@ function deleteCustomChain() {
   updateChainMenu();
   syncRigMarkers();
   refreshRigFields();
+  saveFitDraft();
   alertUser('Цепочка '+id+' удалена.');
 }
 
@@ -321,6 +327,7 @@ function addRigGuide(ask=false) {
     chooseRigJoint('mixamorigHips');
     refreshRigFields();
     // Fit status above reports whether geometry-aware placement succeeded.
+    saveFitDraft();
   }catch(error){
     alertUser('Не удалось построить шаблон: '+(error?.message||String(error)));
   }
@@ -337,6 +344,7 @@ function applyGeometryFit(ask=true) {
     $('autorig-scale').value='100';
     syncRigMarkers();
     refreshRigFields();
+    saveFitDraft();
     alertUser('Центр корпуса исправлен ('+info.sampleCount+' вершин). Проверь его спереди и сбоку.');
   }catch(error){
     console.error('Geometry fitting failed',error);
@@ -354,8 +362,106 @@ function editRigCoordinate(axis,raw) {
   moveJointWorld(state.rigGuide,state.rigSelected,point);
   syncRigMarkers();
   refreshRigFields();
+  saveFitDraft();
 }
 
+// Autosaved fitting data are local to this Android installation. Export JSON
+// for a portable backup before changing or reinstalling the app.
+function fitKey(){return 'animation-studio:fit:'+String(state.modelName||'').toLowerCase();}
+function hasFitBackup(){
+  try{return !!state.modelName && !!localStorage.getItem(fitKey());}
+  catch{return false;}
+}
+function saveFitDraft(){
+  if(!state.rigGuide || !state.modelName)return;
+  try{localStorage.setItem(fitKey(),JSON.stringify(serializeFit(state.rigGuide,state.modelName)));}
+  catch(error){console.warn('Fit autosave unavailable',error);}
+}
+function applyFitData(data) {
+  if(!state.root || state.bones.length)throw Error('Загрузи исходную модель без скелета');
+  const temp=createGuide(new THREE.Box3().setFromObject(state.root));
+  const details=restoreFit(temp,data); // validate before discarding current fit
+  disposeRigGuide();
+  state.rigGuide=temp;
+  scene.add(temp.root);
+  refreshGuideSkeletonHelper();
+  for(const name of ['__root__',...temp.bones.keys()])makeRigMarker(name);
+  const select=$('autorig-selected');
+  for(const option of [...select.options])
+    if(option.value && option.value!=='__root__' && !JOINTS.includes(option.value))option.remove();
+  for(const name of temp.bones.keys())if(!JOINTS.includes(name))select.add(new Option(name,name));
+  updateChainMenu();
+  state.rigEnabled=true;
+  state.rigEditMode='touch';
+  $('autorig-visible').checked=true;
+  if(temp.lastFit?.direction)$('autorig-direction').value=temp.lastFit.direction;
+  chooseRigJoint('mixamorigHips');
+  refreshRigFields();
+  saveFitDraft();
+  return details;
+}
+async function openFitJSON(files){
+  const file=files?.[0];
+  if(!file)return;
+  try{
+    const data=JSON.parse(await file.text());
+    if(data.model && state.modelName && data.model!==state.modelName &&
+      !window.confirm('Подгонка для '+data.model+'. Применить к '+state.modelName+'?'))return;
+    const d=applyFitData(data);
+    alertUser('Подгонка восстановлена: '+d.joints+' костей и '+d.chains+' цепочек.');
+  }catch(e){console.error('Restore fit',e);alertUser('Ошибка JSON: '+(e?.message||String(e)));}
+}
+
+async function bindFittedRig(){
+  if(!state.rigGuide || !state.root || state.busy)return;
+  if(!window.confirm('Создать привязку вершин к выставленным костям? Первые веса автоматические, броня/хвост требуют проверки. Продолжить?'))return;
+  saveFitDraft();
+  state.busy=true;
+  state.playing=false;
+  $('autorig-bind-info').textContent='Рассчитываем веса, подожди…';
+  refreshControls();
+  report('AUTOSKIN');
+  try{
+    await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+    const output=await bindRigToMeshes(state.root,state.rigGuide,{
+      onProgress:p=>$('autorig-bind-info').textContent=
+        'Рассчитано '+p.percentage+'% ('+p.processed+' / '+p.total+' вершин)'
+    });
+    const bones=output.bones;
+    disposeRigGuide(true); // preserve armature now nested under the GLB model
+    state.rigBound=true;
+    state.bones=bones;
+    state.lookup=boneLookup(bones);
+    state.bind=new Map(bones.map(b=>[b.uuid,b.quaternion.clone()]));
+    state.selected=bones.find(b=>/rightarm/i.test(b.name))||bones[0];
+    state.timeline.clear();
+    if(state.mixer)state.mixer.stopAllAction();
+    state.mixer=new THREE.AnimationMixer(state.root);
+    state.action=null;
+    state.skeleton=new THREE.SkeletonHelper(state.root);
+    state.skeleton.visible=$('show-bones').checked;
+    scene.add(state.skeleton);
+    $('show-bones').disabled=false;
+    $('rig-status').textContent='✓ Реальный скелет: '+bones.length+' костей, '+output.meshes+
+      ' мешей с весами. Проверь сгибы, затем экспортируй GLB.';
+    $('rig-status').classList.remove('no-rig');
+    $('autorig-bind-info').textContent='Готово! '+output.vertices+' вершин. Проверь плечи, колени и хвост.';
+    $('save-info').textContent='Скелет привязан к телу. Можно сохранить GLB даже без ключей или создать анимацию.';
+    drawBoneList();
+    showFrame(0);
+    buildClipMenu();
+    alertUser('Модель привязана к костям! Проверь вращение суставов.');
+  }catch(e){
+    console.error('AutoSkin',e);
+    $('autorig-bind-info').textContent='Ошибка привязки: '+(e?.message||String(e))+
+      '. Подгонка сохранена в черновике.';
+    alertUser('Ошибка привязки: '+(e?.message||String(e)));
+  }finally{
+    state.busy=false;
+    report('ГОТОВО');
+    refreshControls();
+  }
+}
 async function saveRigGuide() {
   if(!state.rigGuide||state.busy)return;
   state.busy=true;
@@ -408,6 +514,7 @@ function dragRelease(event) {
   event.preventDefault();
   event.stopImmediatePropagation();
   rigDrag=null;
+  saveFitDraft();
   try{if(dom.hasPointerCapture(event.pointerId))dom.releasePointerCapture(event.pointerId);}catch{}
   orbit.enabled=true;
   refreshRigFields();
@@ -871,7 +978,11 @@ async function saveFile(buffer,name,mime,progress=()=>{}) {
 
 async function exportGLB() {
   if (!state.root || state.busy) return;
-  if (state.bones.length && state.sourceIndex < 0 && !state.timeline.count)
+  if (state.rigGuide && !state.rigBound){
+    alertUser('Кости ещё НЕ привязаны. Нажми «Привязать модель к скелету»!');
+    return;
+  }
+  if (state.bones.length && !state.rigBound && state.sourceIndex < 0 && !state.timeline.count)
     return alertUser('Запиши хотя бы один ключ для новой анимации');
   state.busy=true;
   const wasPlaying=state.playing;
@@ -884,7 +995,7 @@ async function exportGLB() {
   try{
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
     const sourceClips = state.sourceClips.slice();
-    if (state.bones.length) {
+    if (state.bones.length && (state.timeline.count || state.sourceIndex>=0)) {
       const edited = exportClip();
       if (state.sourceIndex < 0) sourceClips.push(edited);
       else sourceClips[state.sourceIndex] = edited;
@@ -900,16 +1011,19 @@ async function exportGLB() {
     assertGlb(glb);
     scene.add(state.root);moved=false;
     const name=(state.modelName||'character').replace(/\.[^.]+$/,'')
-      .replace(/[^\p{L}\p{N}_-]+/gu,'_').slice(0,55)+'_animation.glb';
+      .replace(/[^\p{L}\p{N}_-]+/gu,'_').slice(0,55)+
+      (state.rigBound?'_rigged.glb':'_animation.glb');
     $('save-info').textContent='GLB готов ('+(glb.byteLength/1048576).toFixed(1)+' МБ). Выбери папку.';
     const result=await saveFile(glb,name,'model/gltf-binary',p=>{
       $('save-info').textContent=p===100?'Открываем выбор папки…':'Передаём GLB: '+p+'%';
     });
     if(result.saved) {
-      $('save-info').textContent=state.bones.length
-        ? 'Сохранено. Проверь анимацию повторной загрузкой.'
-        : 'Обычный GLB сохранён без скелета. Для движения суставов нужен риг.';
-      alertUser(state.rigGuide?'GLB сохранён БЕЗ привязки. Сохрани также шаблон JSON.':'GLB сохранён!');
+      $('save-info').textContent=state.rigBound
+        ? 'Скелет и привязанные меши сохранены. Проверь GLB повторной загрузкой.'
+        : state.bones.length
+          ? 'Сохранено. Проверь анимацию повторной загрузкой.'
+          : 'Сохранён обычный GLB без скелета.';
+      alertUser('GLB сохранён!');
     } else if(result.cancelled) {
       $('save-info').textContent='Сохранение отменено — анимация осталась в редакторе.';
       alertUser('Сохранение отменено');
@@ -954,6 +1068,21 @@ onButton('autorig-remove',()=>{
   alertUser('Шаблон удалён. Модель не изменена.');
 });
 onButton('autorig-save',saveRigGuide);
+onButton('autorig-bind',bindFittedRig);
+onButton('autorig-load-file',()=>$('fit-file').click());
+onButton('autorig-recover',()=>{
+  try{
+    const saved=localStorage.getItem(fitKey());
+    if(!saved)throw Error('Нет сохранённой подгонки');
+    const d=applyFitData(JSON.parse(saved));
+    alertUser('Черновик восстановлен: '+d.joints+' суставов, '+d.chains+' цепочек.');
+  }catch(e){alertUser('Не удалось восстановить: '+(e?.message||String(e)));}
+});
+$('fit-file').addEventListener('change',event=>{
+  const files=[...event.target.files];
+  event.target.value='';
+  openFitJSON(files);
+});
 onButton('autorig-geometry-fit',()=>applyGeometryFit(true));
 onButton('autorig-snap',()=>{
   if(!state.rigGuide)return;
@@ -972,6 +1101,10 @@ $('chain-count').addEventListener('input',event=>{
 $('chain-list').addEventListener('change',event=>{
   const found=state.rigGuide?.chains?.find(c=>c.id===event.target.value);
   if(found)chooseRigJoint(found.names[0]);
+});
+$('autorig-scale').addEventListener('change',saveFitDraft);
+rigTransform.addEventListener('dragging-changed',event=>{
+  if(!event.value)saveFitDraft();
 });
 $('autorig-scale').addEventListener('input',event=>{
   if(!state.rigGuide || state.busy)return;

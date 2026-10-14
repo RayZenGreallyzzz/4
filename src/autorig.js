@@ -165,6 +165,39 @@ export function removeGuideChain(guide,id) {
   return true;
 }
 
+export function restoreFit(guide,data) {
+  if(!guide?.bones?.size)throw Error('Сначала создай шаблон');
+  if(!data || data.schema!==RIG_VERSION || !Array.isArray(data.joints))
+    throw Error('Это не файл подгонки Animation Studio');
+  if(data.joints.length<JOINTS.length)throw Error('В файле отсутствуют основные суставы');
+  const requested=new Map(data.joints.map(item=>[item.name,item]));
+  for(const name of JOINTS){
+    const item=requested.get(name);
+    if(!item || !Array.isArray(item.localPosition)||item.localPosition.length!==3 ||
+      !item.localPosition.every(Number.isFinite))throw Error('Не хватает координат '+name);
+  }
+  for(const chain of data.chains||[]){
+    if(!chain || !Array.isArray(chain.bones)||chain.bones.length<2||chain.bones.length>12)
+      throw Error('В файле некорректная цепочка');
+    const built=addGuideChain(guide,chain.type,chain.bones.length);
+    if(built.id!==chain.id || built.names.some((n,i)=>n!==chain.bones[i]))
+      throw Error('Названия цепочки не совпадают с шаблоном');
+  }
+  if(Array.isArray(data.rootPosition) && data.rootPosition.length===3 &&
+    data.rootPosition.every(Number.isFinite))guide.root.position.fromArray(data.rootPosition);
+  if(Array.isArray(data.rootScale)&&data.rootScale.length===3 &&
+    data.rootScale.every(x=>Number.isFinite(x)&&x>0&&x<20))
+    guide.root.scale.fromArray(data.rootScale);
+  for(const [name,bone] of guide.bones){
+    const item=requested.get(name);
+    if(item && Array.isArray(item.localPosition) && item.localPosition.length===3 &&
+      item.localPosition.every(Number.isFinite))bone.position.fromArray(item.localPosition);
+  }
+  guide.lastFit=data.geometryFit || null;
+  guide.root.updateWorldMatrix(true,true);
+  return {joints:guide.bones.size,chains:guide.chains?.length||0};
+}
+
 export function serializeFit(guide,modelName) {
   if(!guide)throw Error('Шаблон отсутствует');
   return {

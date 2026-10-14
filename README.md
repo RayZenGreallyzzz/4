@@ -66,3 +66,11 @@ For precise manual correction after torso fitting, select a joint, press **По�
 ## Официальная иконка лаунчера
 
 Android Launcher теперь использует утверждённый дизайн из второго концепта: неоновая карточка с сурикатом, надписью ANIMATION STUDIO и цианово-пурпурной рамкой. В репозитории хранится оптимизированный локальный WebP (`branding/android/animation_icon.webp`), который GitHub Actions устанавливает как адаптивную и обычную круглую/квадратную иконку. Старые стандартные значки Capacitor удаляются перед сборкой APK. Favicon веб-редактора соответствует иконке приложения.
+
+## AutoSkin — first beta (APK after v8)
+
+A new **ПРИВЯЗАТЬ МОДЕЛЬ К СКЕЛЕТУ** button creates four normalized influence weights per vertex based on distance to fitted bone segments. A real `THREE.SkinnedMesh` replaces each mesh while retaining material, transform and name; bind inverse matrices are captured and the skeleton hierarchy, including manually added tail/ear/wing bones, is attached to the model's GLB scene. You may preview skeletal rotations, animate with existing timeline controls and export rigged GLB. Export with no animation saves a skinned rest-pose GLB.
+
+**WARNING:** this is a first-pass automatic skinning algorithm, not a Mixamo-quality solver. Complex armor, skirts, hair and tails can stretch unexpectedly; verify bone rotations and mesh motion in the editor. Limit: 450,000 vertices. Do not replace original model with a beta output.
+
+Before pressing Bind, save your fitted coordinates in the portable JSON format. **Загрузить подгонку JSON** loads that file later (including extra chains), and **Черновик подгонки** restores a per-model locally stored draft from this version onward. The older APK v8 did not autosave drafts; if the model was closed without JSON, the previous fitting cannot be reconstructed from the static GLB.

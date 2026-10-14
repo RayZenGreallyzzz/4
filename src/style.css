@@ -60,3 +60,11 @@
 
 .rig-snap-button{margin:9px 0;border-color:#a46de6;white-space:normal}
 .rig-snap-button.active{background:linear-gradient(115deg,#80346f,#902e8e);box-shadow:0 0 17px #ed31b861;color:white}
+
+/* Real AutoSkin workflow and recoverable model fitting. */
+.skin-bind-panel{display:grid;gap:10px;margin:14px 0;padding:12px 11px;background:linear-gradient(125deg,#112f46,#22264c);border:1px solid #22bddd;border-radius:12px}
+.skin-bind-panel>strong{font-size:11px;letter-spacing:.5px;color:#77e7fa}
+.skin-bind-panel p{margin:0;line-height:1.5;font-size:10px;color:#b7d4ea}
+.skin-bind-panel .button.cyan{white-space:normal;min-height:46px;letter-spacing:.25px}
+.fit-backup-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+.fit-backup-row button{min-height:36px;white-space:normal;padding:6px;font-size:10px}
