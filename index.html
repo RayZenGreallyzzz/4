@@ -42,6 +42,11 @@
         <label class="field-label" for="clip-select">Клип персонажа</label><select id="clip-select" class="full-width"></select>
         <div class="two-fields"><label>Название<input id="clip-name" maxlength="70" value="New Animation" /></label><label>Кадров<input id="duration" type="number" min="1" max="1200" value="90"/></label></div>
         <button id="new-clip" type="button" class="button outline full-width">✦ Новая анимация</button>
+        <div class="animation-import-panel">
+          <button id="import-animations" type="button" class="button cyan full-width" disabled>＋ ДОБАВИТЬ АНИМАЦИИ GLB / FBX</button>
+          <p id="animation-import-status" class="hint">Загрузи персонажа, затем добавь набор отдельных движений (до 200 файлов за раз). Исходный персонаж останется на месте.</p>
+          <p class="hint">Для Mixamo сначала проверяй совпадение костей: импортируются вращения суставов, а движение корневой позиции пока исключено, чтобы персонаж не улетел.</p>
+        </div>
       </section>
       <section class="panel autorig-panel">
         <h3><span class="badge-number">02A</span> AutoRig · подгонка скелета</h3>
@@ -205,6 +210,14 @@
           <button id="save-glb" type="button" class="button cyan full-width prominent">▣ СОХРАНИТЬ GLB</button>
           <button id="save-fbx" type="button" class="button violet full-width prominent">▣ СОХРАНИТЬ FBX</button>
         </div>
+        <div class="folder-panel">
+          <strong>Папка моих персонажей</strong>
+          <div class="folder-buttons">
+            <button id="select-folder" type="button" class="button outline">▤ Выбрать папку</button>
+            <button id="clear-folder" type="button" class="button outline" disabled>× Отключить</button>
+          </div>
+          <p id="folder-status" class="hint">Один раз выбери место на планшете — внутри появится AnimationStudio/Characters. Все новые GLB/FBX сохранятся там.</p>
+        </div>
         <p id="save-info" class="save-info">GLB — основной формат игры. FBX — двоичный 7.4 для Blender и совместимых редакторов; кости, веса и анимации сохраняются. Для старых версий Mixamo, требующих FBX 2013, совместимость не гарантируется.</p>
         <p class="hint">Всё обрабатывается на устройстве · без облака.</p>
       </section>
@@ -234,5 +247,6 @@
 <div id="toast" role="status" aria-live="polite"></div>
 <input id="model-file" type="file" accept=".glb,.gltf,.fbx,.bin,.png,.jpg,.jpeg,.webp" multiple hidden/>
 <input id="fit-file" type="file" accept=".json,application/json" hidden/>
+<input id="animation-files" type="file" accept=".glb,.gltf,.fbx" multiple hidden/>
 <script type="module" src="/src/main.js"></script>
 </body></html>

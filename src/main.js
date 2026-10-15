@@ -11,6 +11,7 @@ import { bindRigToMeshes } from './skinning.js';
 import { findTailChains, calculateTailRegion, commitTailRegion, restoreTailRegion } from './tailweights.js';
 import { tailPoseQuaternion, tailWagQuaternion, tailWagFrames } from './tailpose.js';
 import { exportFbxBinary, countVertices } from './fbx.js';
+import { importAnimationBatch } from './animationbatch.js';
 import { fitGuideToGeometry } from './bodyfit.js';
 import './style.css';
 
@@ -65,7 +66,8 @@ const state = {
   rafStamp: 0, frameCarry: 0, toastTimer: null,
   rigGuide:null, rigVisual:null, rigMarkers:[], rigSelected:'mixamorigHips',
   rigEnabled:true, rigEditMode:'touch', rigSnapMode:false, rigBound:false,
-  tailMeshes:[], tailChains:[], tailUndo:new Map(), tailWag:null, tailPoseActive:false, tailWagUndo:null
+  tailMeshes:[], tailChains:[], tailUndo:new Map(), tailWag:null, tailPoseActive:false, tailWagUndo:null,
+  folderConfigured:false
 };
 const alertUser = msg => {
   const e = $('toast');
@@ -595,6 +597,89 @@ dom.addEventListener('pointermove',event=>{
 dom.addEventListener('pointerup',dragRelease,true);
 dom.addEventListener('pointercancel',dragRelease,true);
 
+async function addAnimationFiles(files) {
+  if(!state.root||!state.bones.length)return alertUser('Сначала загрузи персонажа с костями');
+  if(state.busy||state.loading)return;
+  stopTailWag();state.playing=false;state.busy=true;refreshControls();
+  report('ИМПОРТ АНИМАЦИЙ');
+  const oldCount=state.sourceClips.length;
+  const status=$('animation-import-status');
+  try {
+    const summary=await importAnimationBatch(files,{
+      bones:state.bones,bind:state.bind,
+      onProgress:p=>status.textContent='Обработка '+p.index+'/'+p.total+
+        ': '+p.name+' · клипов '+p.loaded+' · ошибок '+p.failed,
+      onClip:clip=>{
+        let title=clip.name,serial=2;
+        while(state.sourceClips.some(c=>c.name===title)){
+          title=clip.name+' ('+serial+')';serial++;
+        }
+        clip.name=title;state.sourceClips.push(clip);
+      }
+    });
+    if(summary.loaded){
+      if(!state.mixer)state.mixer=new THREE.AnimationMixer(state.root);
+      if(oldCount===0&&state.timeline.count===0){
+        state.sourceIndex=0;state.action=null;
+        state.frames=Math.min(MAX_FRAMES,Math.max(1,Math.round(state.sourceClips[0].duration*FPS)));
+        state.clipName=state.sourceClips[0].name;
+        $('clip-name').value=state.clipName;
+        $('duration').value=String(state.frames);
+        showFrame(0);
+      }
+      buildClipMenu();
+    }
+    status.textContent='Добавлено '+summary.loaded+' анимаций из '+summary.files+
+      ' файлов. Ошибок: '+summary.failed+', несовместимых клипов: '+summary.unmatched+
+      (summary.partial?', частичные совпадения: '+summary.partial:'')+'.'+
+      (summary.warnings.length?' '+summary.warnings.slice(0,4).join(' | '):'')+
+      ' Для постоянного хранения вместе с персонажем экспортируй GLB.';
+    alertUser('Импортировано '+summary.loaded+' движений. '+summary.failed+' ошибок файлов.');
+  }catch(error){
+    status.textContent='Ошибка импорта: '+(error?.message||String(error));
+    alertUser(status.textContent);
+  }finally{
+    state.busy=false;report('ГОТОВО');refreshControls();
+  }
+}
+async function refreshFolderInfo(){
+  if(!Capacitor.isNativePlatform()){
+    $('folder-status').textContent='Постоянная папка доступна в Android APK; браузер использует окно сохранения.';
+    return;
+  }
+  try {
+    const info=await NativeFileSaver.getFolderInfo();
+    state.folderConfigured=Boolean(info.configured);
+    $('folder-status').textContent=state.folderConfigured
+      ? '✓ AnimationStudio/Characters готова. GLB и FBX сохраняются туда автоматически.'
+      : 'Выбери расположение один раз: внутри создадим AnimationStudio/Characters.';
+  }catch(error){
+    $('folder-status').textContent='Ошибка проверки папки: '+(error?.message||String(error));
+  }
+  refreshControls();
+}
+async function selectAppFolder(){
+  if(state.busy)return;
+  try{
+    $('folder-status').textContent='Выбери папку (например, Документы), разреши доступ — создадим AnimationStudio/Characters.';
+    const info=await NativeFileSaver.chooseFolder();
+    await refreshFolderInfo();
+    if(!info.cancelled)alertUser('Папка AnimationStudio/Characters создана!');
+  }catch(error){
+    $('folder-status').textContent='Ошибка настройки папки: '+(error?.message||String(error));
+    alertUser('Не удалось создать папку: '+(error?.message||String(error)));
+  }
+}
+async function clearAppFolder(){
+  if(state.busy||!state.folderConfigured)return;
+  if(!window.confirm('Отключить сохранение в постоянную папку? Сами файлы останутся на планшете.'))return;
+  try{
+    await NativeFileSaver.clearFolder();
+    await refreshFolderInfo();
+    alertUser('Автосохранение отключено. Файлы не удалены.');
+  }catch(error){alertUser('Ошибка: '+(error?.message||String(error)));}
+}
+
 function resourceManager(files) {
   const urls = [], byName = new Map();
   for(const f of files) {
@@ -678,6 +763,7 @@ async function importCharacter(files) {
     showFrame(0);
     refreshControls();
     syncTailEditor();
+    $('animation-import-status').textContent='Модель загружена. Можно добавить отдельные FBX/GLB движения без замены персонажа.';
     alertUser(hasRig ? 'Персонаж загружен: ' + main.name
       : 'Модель загружена без скелета. Доступны просмотр и сохранение GLB.');
   } catch (e) {
@@ -854,6 +940,9 @@ function refreshControls() {
   $('play').disabled = !hasAnimation;
   $('delete-key').disabled = !rigged || !state.selected || !state.timeline.has(state.selected,state.frame);
   $('paste-pose').disabled = !rigged || !state.clipboard;
+  $('import-animations').disabled = !rigged;
+  $('select-folder').disabled = state.busy || !Capacitor.isNativePlatform();
+  $('clear-folder').disabled = state.busy || !state.folderConfigured || !Capacitor.isNativePlatform();
   $('play').textContent = state.playing ? 'Ⅱ Пауза' : '▶ Играть';
   refreshRigFields();
   refreshTailEditor();
@@ -1039,11 +1128,13 @@ async function exportGLB() {
       $('save-info').textContent=p===100?'Открываем выбор папки…':'Передаём GLB: '+p+'%';
     });
     if(result.saved) {
-      $('save-info').textContent=state.rigBound
-        ? 'Скелет и привязанные меши сохранены. Проверь GLB повторной загрузкой.'
-        : state.bones.length
-          ? 'Сохранено. Проверь анимацию повторной загрузкой.'
-          : 'Сохранён обычный GLB без скелета.';
+      $('save-info').textContent=result.folder
+        ? '✓ Файл '+result.filename+' сохранён в AnimationStudio/Characters.'
+        : state.rigBound
+          ? 'Скелет и привязанные меши сохранены. Проверь GLB повторной загрузкой.'
+          : state.bones.length
+            ? 'Сохранено. Проверь анимацию повторной загрузкой.'
+            : 'Сохранён обычный GLB без скелета.';
       alertUser('GLB сохранён!');
     } else if(result.cancelled) {
       $('save-info').textContent='Сохранение отменено — анимация осталась в редакторе.';
@@ -1102,7 +1193,9 @@ async function exportFBX() {
         'Записываем FBX: '+percent+'%';
     });
     if(result.saved){
-      $('save-info').textContent='FBX 7.4 сохранён. Проверь импорт в Blender. FBX 2013 для старого Mixamo пока не поддерживается.';
+      $('save-info').textContent=result.folder
+        ? '✓ FBX '+result.filename+' сохранён в AnimationStudio/Characters. Проверь в Blender.'
+        : 'FBX 7.4 сохранён. Проверь импорт в Blender. FBX 2013 для старого Mixamo пока не поддерживается.';
       alertUser('Настоящий FBX сохранён!');
     }else if(result.cancelled){
       $('save-info').textContent='Сохранение FBX отменено; модель осталась в редакторе.';
@@ -1451,6 +1544,13 @@ for(const axis of ['x','y','z'])
   $('autorig-'+axis).addEventListener('change',event=>editRigCoordinate(axis,event.target.value));
 
 onButton('new-clip',()=>switchClip('new'));
+onButton('import-animations',()=>$('animation-files').click());
+$('animation-files').addEventListener('change',event=>{
+  const files=[...(event.target.files||[])];event.target.value='';
+  addAnimationFiles(files);
+});
+onButton('select-folder',selectAppFolder);
+onButton('clear-folder',clearAppFolder);
 $('bone-search').addEventListener('input',drawBoneList);
 $('clip-select').addEventListener('change',e=>switchClip(e.target.value));
 $('clip-name').addEventListener('change',e=>{
@@ -1551,6 +1651,7 @@ function animate(){
   renderer.render(scene,camera);
 }
 animate();
+refreshFolderInfo();
 buildClipMenu();
 drawBoneList();
 showFrame(0);
