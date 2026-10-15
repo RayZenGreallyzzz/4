@@ -29,7 +29,7 @@ export async function exportFbxBinary(root, clips=[], {preset='blender'}={}) {
     preset,
     fps:30,
     embedTextures:true,
-    animations:clips.filter(x=>x?.isAnimationClip),
+    animations:clips.filter(x=>Array.isArray(x?.tracks)),
     onlyVisible:false
   };
   root.updateWorldMatrix(true,true);

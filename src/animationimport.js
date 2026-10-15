@@ -26,7 +26,7 @@ const hasFiniteValues=a=>a&&a.every(Number.isFinite);
 export function retargetAnimationClip(clip,sourceRoot,targetBones,targetBind,{
   name=clip?.name||'Animation'
 }={}){
-  if(!clip?.isAnimationClip||!sourceRoot?.isObject3D||!targetBones?.length)
+  if(!Array.isArray(clip?.tracks)||!sourceRoot?.isObject3D||!targetBones?.length)
     throw Error('Нет анимации либо скелета');
   const targets=new Map();
   for(const b of targetBones)if(b.isBone&&b.name)targets.set(normalizeBoneName(b.name),b);
