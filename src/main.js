@@ -606,7 +606,7 @@ async function addAnimationFiles(files) {
   const status=$('animation-import-status');
   try {
     const summary=await importAnimationBatch(files,{
-      bones:state.bones,bind:state.bind,
+      bones:state.bones,bind:state.bind,mode:$('retarget-mode').value,
       onProgress:p=>status.textContent='Обработка '+p.index+'/'+p.total+
         ': '+p.name+' · клипов '+p.loaded+' · ошибок '+p.failed,
       onClip:clip=>{
@@ -630,7 +630,9 @@ async function addAnimationFiles(files) {
       buildClipMenu();
     }
     status.textContent='Добавлено '+summary.loaded+' анимаций из '+summary.files+
-      ' файлов. Ошибок: '+summary.failed+', несовместимых клипов: '+summary.unmatched+
+      ' файлов. Максимально совпало '+summary.bestMatched+'/'+summary.bestTotal+' костей; '+
+      'полных совпадений: '+summary.full+'. Ошибок файлов: '+summary.failed+
+      ', несовместимых клипов: '+summary.unmatched+
       (summary.partial?', частичные совпадения: '+summary.partial:'')+'.'+
       (summary.warnings.length?' '+summary.warnings.slice(0,4).join(' | '):'')+
       ' Для постоянного хранения вместе с персонажем экспортируй GLB.';
@@ -763,7 +765,8 @@ async function importCharacter(files) {
     showFrame(0);
     refreshControls();
     syncTailEditor();
-    $('animation-import-status').textContent='Модель загружена. Можно добавить отдельные FBX/GLB движения без замены персонажа.';
+    $('animation-import-status').textContent='Скелет персонажа: '+bones.length+
+      ' костей. Можно добавить GLB/FBX движения. Если это готовый Mixamo-скелет из 41 кости, будут перенесены все совпадающие 41.';
     alertUser(hasRig ? 'Персонаж загружен: ' + main.name
       : 'Модель загружена без скелета. Доступны просмотр и сохранение GLB.');
   } catch (e) {
@@ -941,6 +944,7 @@ function refreshControls() {
   $('delete-key').disabled = !rigged || !state.selected || !state.timeline.has(state.selected,state.frame);
   $('paste-pose').disabled = !rigged || !state.clipboard;
   $('import-animations').disabled = !rigged;
+  $('retarget-mode').disabled = !rigged;
   $('select-folder').disabled = state.busy || !Capacitor.isNativePlatform();
   $('clear-folder').disabled = state.busy || !state.folderConfigured || !Capacitor.isNativePlatform();
   $('play').textContent = state.playing ? 'Ⅱ Пауза' : '▶ Играть';

@@ -104,3 +104,5 @@
 .folder-buttons{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:9px}
 .folder-buttons .button{min-height:40px;white-space:normal;font-size:10px;padding:7px}
 .folder-panel .hint{margin:0;font-size:10px;line-height:1.6;overflow-wrap:anywhere}
+
+.animation-import-panel select{font-size:11px;min-height:37px;padding:8px;color:#d9ecff;background:#101f35;border:1px solid #376b80;border-radius:8px}

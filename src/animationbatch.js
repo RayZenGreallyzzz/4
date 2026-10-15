@@ -6,13 +6,14 @@ import {retargetAnimationClip,clipNameForFile} from './animationimport.js';
 // Never add source models to the scene; import only mapped quaternion tracks.
 // Files are parsed sequentially to bound peak RAM on Android devices.
 export async function importAnimationBatch(files,{
-  bones,bind,onProgress=()=>{},onClip=()=>{},yieldUI=()=>new Promise(r=>setTimeout(r,0))
+  bones,bind,mode='auto',onProgress=()=>{},onClip=()=>{},yieldUI=()=>new Promise(r=>setTimeout(r,0))
 }={}){
   if(!bones?.length)throw Error('У персонажа должен быть скелет');
   const accepted=[...(files||[])].filter(f=>/\.(glb|gltf|fbx)$/i.test(f.name));
   if(!accepted.length)throw Error('Выбери FBX или GLB анимации');
   if(accepted.length>200)throw Error('Загружай максимум 200 файлов за один раз');
-  const report={files:accepted.length,loaded:0,failed:0,unmatched:0,partial:0,warnings:[]};
+  const report={files:accepted.length,loaded:0,failed:0,unmatched:0,partial:0,full:0,
+    bestMatched:0,bestTotal:0,warnings:[]};
   for(let i=0;i<accepted.length;i++){
     const file=accepted[i];
     onProgress({index:i+1,total:accepted.length,name:file.name,...report});
@@ -30,7 +31,7 @@ export async function importAnimationBatch(files,{
       if(!animations.length)throw Error('В файле нет анимаций');
       animations.forEach((clip,index)=>{
         const name=clipNameForFile(file.name,clip.name,animations.length>1?index:0);
-        const outcome=retargetAnimationClip(clip,scene,bones,bind,{name});
+        const outcome=retargetAnimationClip(clip,scene,bones,bind,{name,mode});
         if(!outcome.clip){
           report.unmatched++;
           report.warnings.push(file.name+': не совпали кости');
@@ -38,6 +39,11 @@ export async function importAnimationBatch(files,{
         }
         onClip(outcome.clip,outcome);
         report.loaded++;
+        if(outcome.matched===outcome.total)report.full++;
+        if(outcome.matched>report.bestMatched){
+          report.bestMatched=outcome.matched;
+          report.bestTotal=outcome.total;
+        }
         if(outcome.warning){
           report.partial++;
           report.warnings.push(file.name+': совпало '+outcome.matched+'/'+outcome.total+' костей');
