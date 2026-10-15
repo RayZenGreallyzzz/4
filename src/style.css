@@ -133,3 +133,19 @@
  .animation-gallery-layout{grid-template-columns:minmax(0,1fr) 128px;gap:5px}
  .animation-gallery-item{padding:6px 4px}
 }
+
+/* Readable Russian animation workflow on narrow Android tablets. */
+.animation-guide{margin:10px 0 12px;padding:10px;border-radius:10px;background:#12263a;border:1px solid #39728a;color:#e0f4ff;font-size:11px;line-height:1.5}
+.animation-guide summary{cursor:pointer;font-size:12px;font-weight:700;color:#93ecfb}
+.animation-guide ol{margin:10px 0 7px;padding-left:20px}
+.animation-guide li{margin-bottom:6px}
+.animation-guide p{margin:7px 0 0;color:#aed6e5}
+.frame-quick-nav{display:flex;align-items:center;gap:5px;flex-wrap:wrap;padding:7px 0;font-size:11px}
+.frame-quick-nav label{display:flex;align-items:center;gap:6px;color:#c0ebff;margin-right:auto}
+.frame-quick-nav input{width:62px;min-height:35px;text-align:center;padding:6px;background:#0b1c2f;border-radius:7px;border:1px solid #41788d;color:#f0fcff}
+.frame-quick-nav button{min-width:31px;min-height:35px;padding:5px;border:1px solid #397288;color:#d8f3ff;background:#132b42;border-radius:7px;font-size:11px}
+.frame-quick-nav button:disabled{opacity:.4}
+.joint-shortcuts{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:7px 0 10px}
+.joint-shortcuts button{min-height:37px;padding:7px 4px;font-size:11px;color:#def8ff;background:#15354a;border:1px solid #39829b;border-radius:7px}
+.joint-shortcuts button.active{background:#126176;border-color:#56ebf7;color:#fff}
+.joint-shortcuts button:disabled{opacity:.45}

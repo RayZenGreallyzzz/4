@@ -13,6 +13,7 @@ import { tailPoseQuaternion, tailWagQuaternion, tailWagFrames } from './tailpose
 import { exportFbxBinary, countVertices } from './fbx.js';
 import { importAnimationBatch } from './animationbatch.js';
 import { fitGuideToGeometry } from './bodyfit.js';
+import { boneLabel, boneNameKey, boneMatchesSearch } from './bone-locale.js';
 import './style.css';
 
 const $ = id => document.getElementById(id);
@@ -67,7 +68,7 @@ const state = {
   sourceClips: [], sourceIndex: -1, mixer: null, action: null,
   timeline: new Timeline(), selected: null, skeleton: null,
   frame: 0, frames: 90, playing: false, loop: true, speed: 1,
-  clipName: 'New Animation', clipboard: null, busy: false, loading: false,
+  clipName: 'Новая анимация', clipboard: null, busy: false, loading: false,
   rafStamp: 0, frameCarry: 0, toastTimer: null,
   rigGuide:null, rigVisual:null, rigMarkers:[], rigSelected:'mixamorigHips',
   rigEnabled:true, rigEditMode:'touch', rigSnapMode:false, rigBound:false,
@@ -116,7 +117,7 @@ function disposeModel() {
   Object.assign(state, {
     root:null,modelName:null,bones:[],lookup:new Map(),bind:new Map(),
     sourceClips:[],sourceIndex:-1,mixer:null,action:null,
-    selected:null,skeleton:null,frame:0,frames:90,clipName:'New Animation',rigBound:false
+    selected:null,skeleton:null,frame:0,frames:90,clipName:'Новая анимация',rigBound:false
   });
   state.timeline.clear();
   state.clipboard = null;
@@ -439,7 +440,7 @@ async function bindFittedRig(){
   state.playing=false;
   $('autorig-bind-info').textContent='Рассчитываем веса, подожди…';
   refreshControls();
-  report('AUTOSKIN');
+  report('ПРИВЯЗКА СКЕЛЕТА');
   try{
     await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
     const output=await bindRigToMeshes(state.root,state.rigGuide,{
@@ -470,7 +471,7 @@ async function bindFittedRig(){
     showFrame(0);
     buildClipMenu();
     syncTailEditor();
-    alertUser('Модель привязана к костям! Проверь вращение суставов.');
+    alertUser('Модель привязана! Для анимации выбери «Новая анимация», затем сустав и поворачивай X/Y/Z на разных кадрах.');
   }catch(e){
     console.error('AutoSkin',e);
     $('autorig-bind-info').textContent='Ошибка привязки: '+(e?.message||String(e))+
@@ -750,7 +751,7 @@ async function importCharacter(files) {
     });
     state.sourceIndex = clips.length ? 0 : -1;
     state.frames = clips.length ? Math.min(MAX_FRAMES,Math.max(1,Math.round(clips[0].duration*FPS))) : 90;
-    state.clipName = clips[0]?.name || 'New Animation';
+    state.clipName = clips[0]?.name || 'Новая анимация';
     state.selected = bones.find(b=>/right(arm|forearm|hand)/i.test(b.name)) || bones[0];
     state.mixer = clips.length ? new THREE.AnimationMixer(root) : null;
     scene.add(root);
@@ -839,6 +840,8 @@ function showFrame(value, repaint=true) {
   $('seek').max = String(state.frames);
   $('seek').value = String(state.frame);
   $('current-frame').textContent = String(state.frame);
+  $('frame-number').max=String(state.frames);
+  if(document.activeElement!==$('frame-number'))$('frame-number').value=String(state.frame);
   $('current-time').textContent = (state.frame/FPS).toFixed(2);
   preview(state.frame);
   if (repaint) { refreshAngles(); drawKeys(); refreshControls(); }
@@ -929,7 +932,7 @@ function switchClip(value) {
   state.timeline.clear();
   state.sourceIndex = next;
   state.action = null;
-  state.clipName = next<0 ? 'New Animation' : state.sourceClips[next].name || 'Edited Animation';
+  state.clipName = next<0 ? 'Новая анимация' : state.sourceClips[next].name || 'Изменённая анимация';
   state.frames = next<0 ? 90 : Math.min(MAX_FRAMES,Math.max(1,Math.round(state.sourceClips[next].duration*FPS)));
   $('clip-name').value = state.clipName;
   $('duration').value = String(state.frames);
@@ -942,7 +945,7 @@ function drawBoneList() {
   const list = $('bone-list');
   list.replaceChildren();
   const query = $('bone-search').value.trim().toLowerCase();
-  const filtered = state.bones.filter(b=>b.name.toLowerCase().includes(query));
+  const filtered = state.bones.filter(b=>boneMatchesSearch(b.name,query));
   $('bones-count').textContent = filtered.length+' / '+state.bones.length;
   for (const bone of filtered.slice(0,250)) {
     const el = document.createElement('button');
@@ -952,7 +955,8 @@ function drawBoneList() {
     marker.textContent = state.timeline.forBone(bone).size ? '◆' : '◇';
     marker.className = 'bone-mark';
     const name = document.createElement('span');
-    name.textContent = bone.name || '(bone)';
+    name.textContent = boneLabel(bone.name);
+    name.title = 'В файле: '+(bone.name||'кость без названия');
     el.append(marker,name);
     el.addEventListener('click',()=>{
       state.selected = bone;
@@ -976,7 +980,7 @@ function drawBoneList() {
 
 function refreshAngles() {
   const bone = state.selected;
-  $('bone-title').textContent = bone?.name || 'Выбери кость';
+  $('bone-title').textContent = bone?boneLabel(bone.name):'Выбери кость';
   const angle = bone ? new THREE.Euler().setFromQuaternion(bone.quaternion,'XYZ') : new THREE.Euler();
   for(const axis of ['x','y','z']) {
     const number = Math.round(THREE.MathUtils.radToDeg(angle[axis])*10)/10;
@@ -1020,6 +1024,14 @@ function refreshControls() {
   $('delete-key').disabled = !rigged || !state.selected || !state.timeline.has(state.selected,state.frame);
   $('paste-pose').disabled = !rigged || !state.clipboard;
   $('import-animations').disabled = !rigged;
+  $('frame-number').disabled = !ready;
+  for(const b of document.querySelectorAll('[data-frame-jump]')){
+    b.disabled=!ready||Number(b.dataset.frameJump)>state.frames;
+  }
+  for(const b of document.querySelectorAll('[data-joint]')){
+    b.disabled=!rigged||!state.bones.some(bone=>boneNameKey(bone.name)===b.dataset.joint);
+    b.classList.toggle('active',Boolean(state.selected&&boneNameKey(state.selected.name)===b.dataset.joint));
+  }
   $('retarget-mode').disabled = !rigged;
   $('select-folder').disabled = state.busy || !Capacitor.isNativePlatform();
   $('clear-folder').disabled = state.busy || !state.folderConfigured || !Capacitor.isNativePlatform();
@@ -1252,7 +1264,7 @@ async function exportFBX() {
   const wasPlaying=state.playing;
   state.playing=false;
   refreshControls();
-  report('FBX ЭКСПОРТ');
+  report('СОХРАНЕНИЕ FBX');
   $('save-info').textContent='Подготавливаем FBX 7.4 (2014/2015). Это может занять время…';
   try{
     await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
@@ -1634,9 +1646,34 @@ $('animation-files').addEventListener('change',event=>{
 onButton('select-folder',selectAppFolder);
 onButton('clear-folder',clearAppFolder);
 $('bone-search').addEventListener('input',drawBoneList);
+// Fast elbow/knee selection works with Mixamo aliases but never renames bones.
+for(const button of document.querySelectorAll('[data-joint]')){
+  button.addEventListener('click',()=>{
+    if(state.busy)return;
+    const bone=state.bones.find(b=>boneNameKey(b.name)===button.dataset.joint);
+    if(!bone)return alertUser('Такая кость отсутствует у этого персонажа');
+    state.selected=bone;
+    state.playing=false;
+    drawBoneList();refreshAngles();drawKeys();refreshControls();
+    alertUser('Выбран сустав: '+boneLabel(bone.name)+'. Поворачивай X, Y или Z.');
+  });
+}
+$('frame-number').addEventListener('change',event=>{
+  if(!state.root||state.busy)return;
+  state.playing=false;
+  showFrame(Number(event.target.value));
+  event.target.value=String(state.frame);
+});
+for(const b of document.querySelectorAll('[data-frame-jump]')){
+  b.addEventListener('click',()=>{
+    if(!state.root||state.busy)return;
+    state.playing=false;
+    showFrame(Number(b.dataset.frameJump));
+  });
+}
 $('clip-select').addEventListener('change',e=>switchClip(e.target.value));
 $('clip-name').addEventListener('change',e=>{
-  state.clipName=e.target.value.trim().slice(0,70)||'New Animation';
+  state.clipName=e.target.value.trim().slice(0,70)||'Новая анимация';
   e.target.value=state.clipName;
 });
 $('duration').addEventListener('change',e=>{
