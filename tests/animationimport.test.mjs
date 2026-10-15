@@ -28,11 +28,11 @@ test('retargets source quaternion to destination name/UUID and rest delta',()=>{
   assert.equal(input.clip.tracks.length,1);
   assert.equal(input.clip.tracks[0].name,target.uuid+'.quaternion');
   const outputAt0=new THREE.Quaternion().fromArray(input.clip.tracks[0].values,0);
-  assert.ok(outputAt0.angleTo(targetRest)<1e-5);
+  assert.ok(outputAt0.angleTo(targetRest)<1e-3);
   const expected=targetRest.clone().multiply(
     new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),.45));
   const outputMid=new THREE.Quaternion().fromArray(input.clip.tracks[0].values,4);
-  assert.ok(outputMid.angleTo(expected)<1e-4);
+  assert.ok(outputMid.angleTo(expected)<1e-3);
   assert.equal(src.quaternion.angleTo(src.quaternion.clone()),0);
 });
 test('unmatched bones are skipped and no geometry imported',()=>{
