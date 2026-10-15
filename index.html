@@ -144,6 +144,27 @@
         </div>
         <p class="hint autorig-warning">Этап 1: AutoRig сначала оценивает центр тела по реальным вершинам мешей. Если персонаж смотрит назад или вбок — исправь направление выше и пересчитай. Затем выбирай точку и перетаскивай пальцем. Вид «Спереди» — для ширины и высоты, «Сбоку» — для глубины. Масштаб и сдвиг всего скелета — выше. Суставы можно также двигать стрелками или вводить координаты. До нажатия «Привязать модель к скелету» это только шаблон. После привязки обязательно проверь вращение костей, а затем сохраняй GLB.</p>
       </section>
+
+      <section class="panel tail-weights-panel">
+        <h3><span class="badge-number">03A</span> Веса хвоста — тестовый режим</h3>
+        <p class="hint">Работает только ПОСЛЕ AutoSkin. Основные веса тела не пересчитываются. Выбирай конкретный меш хвоста, если он отдельный.</p>
+        <label class="field-label" for="tail-mesh-select">Какой меш изменять?</label>
+        <select id="tail-mesh-select" class="full-width" disabled></select>
+        <label class="field-label" for="tail-chain-select">Цепочка костей</label>
+        <select id="tail-chain-select" class="full-width" disabled></select>
+        <label class="tail-radius-field" for="tail-radius">
+          Радиус влияния <span id="tail-radius-label">5% роста</span>
+        </label>
+        <input id="tail-radius" class="tail-radius-slider" type="range" min="1" max="15" step="1" value="5" disabled/>
+        <div class="action-grid tail-actions">
+          <button id="tail-preview" type="button" class="button outline" disabled>◎ Проверить область</button>
+          <button id="tail-apply" type="button" class="button cyan" disabled>✓ Применить веса</button>
+          <button id="tail-wag" type="button" class="button violet" disabled>▶ Тест виляния хвоста</button>
+          <button id="tail-undo" type="button" class="button outline" disabled>↶ Отменить веса</button>
+        </div>
+        <p id="tail-weights-status" class="tail-weight-status">Загрузи персонажа с привязанным хвостом. Перед экспериментами сохрани исходный GLB и подгонку JSON.</p>
+        <p class="hint">Если всё тело — один меш, сначала поставь небольшой радиус (3–5%) и проверь количество вершин. Если трогается броня или корпус — отмени.</p>
+      </section>
       <section class="panel bones-panel">
         <h3><span class="badge-number">03</span> Скелет <small id="bones-count">0 / 0</small></h3>
         <input id="bone-search" type="search" placeholder="⌕ Найти кость — arm, hand, head…" class="full-width"/>

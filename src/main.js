@@ -8,6 +8,7 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 import { FPS, MAX_FRAMES, Timeline, boneLookup, compileClip, clampFrame } from './timeline.js';
 import { JOINTS, createGuide, jointWorld, moveJointWorld, serializeFit, restoreFit, addGuideChain, removeGuideChain } from './autorig.js';
 import { bindRigToMeshes } from './skinning.js';
+import { findTailChains, calculateTailRegion, commitTailRegion, restoreTailRegion } from './tailweights.js';
 import { exportFbxBinary, countVertices } from './fbx.js';
 import { fitGuideToGeometry } from './bodyfit.js';
 import './style.css';
@@ -62,7 +63,8 @@ const state = {
   clipName: 'New Animation', clipboard: null, busy: false, loading: false,
   rafStamp: 0, frameCarry: 0, toastTimer: null,
   rigGuide:null, rigVisual:null, rigMarkers:[], rigSelected:'mixamorigHips',
-  rigEnabled:true, rigEditMode:'touch', rigSnapMode:false, rigBound:false
+  rigEnabled:true, rigEditMode:'touch', rigSnapMode:false, rigBound:false,
+  tailMeshes:[], tailChains:[], tailUndo:new Map(), tailWag:null
 };
 const alertUser = msg => {
   const e = $('toast');
@@ -75,6 +77,10 @@ const report = s => { $('status').textContent = '● ' + s; };
 const onButton = (id, fn) => $(id).addEventListener('click',fn);
 
 function disposeModel() {
+  stopTailWag();
+  state.tailUndo.clear();
+  state.tailMeshes=[];
+  state.tailChains=[];
   disposeRigGuide();
   state.playing = false;
   if (state.mixer) { state.mixer.stopAllAction(); state.mixer.uncacheRoot(state.root); }
@@ -451,6 +457,7 @@ async function bindFittedRig(){
     drawBoneList();
     showFrame(0);
     buildClipMenu();
+    syncTailEditor();
     alertUser('Модель привязана к костям! Проверь вращение суставов.');
   }catch(e){
     console.error('AutoSkin',e);
@@ -667,6 +674,7 @@ async function importCharacter(files) {
     frameCamera();
     showFrame(0);
     refreshControls();
+    syncTailEditor();
     alertUser(hasRig ? 'Персонаж загружен: ' + main.name
       : 'Модель загружена без скелета. Доступны просмотр и сохранение GLB.');
   } catch (e) {
@@ -844,9 +852,11 @@ function refreshControls() {
   $('paste-pose').disabled = !rigged || !state.clipboard;
   $('play').textContent = state.playing ? 'Ⅱ Пауза' : '▶ Играть';
   refreshRigFields();
+  refreshTailEditor();
 }
 
 function editAngle(axis, value) {
+  stopTailWag();
   const bone = state.selected;
   const number = Number(value);
   if (!bone || state.busy || !Number.isFinite(number)) return;
@@ -984,6 +994,7 @@ async function saveFile(buffer,name,mime,progress=()=>{}) {
 
 async function exportGLB() {
   if (!state.root || state.busy) return;
+  stopTailWag();
   if (state.rigGuide && !state.rigBound){
     alertUser('Кости ещё НЕ привязаны. Нажми «Привязать модель к скелету»!');
     return;
@@ -1052,6 +1063,7 @@ async function exportGLB() {
 
 async function exportFBX() {
   if(!state.root || state.busy)return;
+  stopTailWag();
   if(state.rigGuide && !state.rigBound){
     alertUser('Сначала привяжи модель к скелету в AutoSkin — иначе кости не будут управлять телом.');
     return;
@@ -1106,6 +1118,133 @@ async function exportFBX() {
     report('ГОТОВО');
     refreshControls();
   }
+}
+
+// Optional tail-only skinning adjustment. Original skinIndex/skinWeight
+// BufferAttributes are kept verbatim for one-click undo. Never auto-applied.
+function syncTailEditor(){
+  const oldMesh=$('tail-mesh-select').value;
+  const oldChain=$('tail-chain-select').value;
+  const meshes=[];
+  state.root?.traverse?.(obj=>{if(obj.isSkinnedMesh)meshes.push(obj);});
+  state.tailMeshes=meshes;
+  state.tailChains=findTailChains(state.bones);
+  const meshSelect=$('tail-mesh-select'),chainSelect=$('tail-chain-select');
+  meshSelect.replaceChildren();
+  chainSelect.replaceChildren();
+  meshes.forEach((m,i)=>meshSelect.add(new Option(
+    (m.name||'Меш '+(i+1))+' · '+m.geometry.attributes.position.count.toLocaleString('ru-RU')+' вершин',m.uuid)));
+  state.tailChains.forEach(chain=>chainSelect.add(new Option(
+    chain.id+' · '+chain.bones.length+' костей',chain.id)));
+  const named=meshes.find(m=>/tail|хвост/i.test(m.name||''));
+  meshSelect.value=meshes.some(m=>m.uuid===oldMesh)?oldMesh:(named?.uuid||meshes[0]?.uuid||'');
+  chainSelect.value=state.tailChains.some(c=>c.id===oldChain)?oldChain:(state.tailChains[0]?.id||'');
+  if(!meshes.length)meshSelect.add(new Option('Нет привязанных мешей',''));
+  if(!state.tailChains.length)chainSelect.add(new Option('Нет костей Tail_01…',''));
+  refreshTailEditor();
+}
+function activeTailSelection(){
+  const mesh=state.tailMeshes.find(m=>m.uuid===$('tail-mesh-select').value);
+  const chain=state.tailChains.find(c=>c.id===$('tail-chain-select').value);
+  return {mesh,chain};
+}
+function refreshTailEditor(){
+  const {mesh,chain}=activeTailSelection();
+  const usable=Boolean(mesh&&chain&&!state.busy);
+  for(const id of ['tail-mesh-select','tail-chain-select','tail-radius','tail-preview','tail-apply'])
+    $(id).disabled=!usable;
+  $('tail-wag').disabled=!usable;
+  $('tail-undo').disabled=!usable || !state.tailUndo.has(mesh.uuid);
+  $('tail-wag').textContent=state.tailWag?'■ Остановить виляние':'▶ Тест виляния хвоста';
+  $('tail-radius-label').textContent=$('tail-radius').value+'% роста';
+  if(!state.tailMeshes.length)$('tail-weights-status').textContent=
+    'Сначала нажми «Привязать модель к скелету» или открой GLB с готовым ригом.';
+  else if(!state.tailChains.length)$('tail-weights-status').textContent=
+    'Не найдены кости Tail_01...Tail_05. Добавь цепочку хвоста в AutoRig.';
+}
+function stopTailWag(){
+  if(!state.tailWag)return;
+  for(const {bone,q} of state.tailWag.originals)bone.quaternion.copy(q);
+  state.root?.updateMatrixWorld?.(true);
+  state.tailWag=null;
+  $('tail-wag').textContent='▶ Тест виляния хвоста';
+}
+function toggleTailWag(){
+  if(state.tailWag){stopTailWag();refreshTailEditor();return;}
+  if(state.busy)return;
+  const {mesh,chain}=activeTailSelection();
+  if(!mesh||!chain)return alertUser('Выбери меш и цепочку хвоста');
+  state.playing=false;
+  showFrame(0);
+  state.tailWag={time:0,originals:chain.bones.map(b=>({bone:b,q:b.quaternion.clone()}))};
+  refreshTailEditor();
+}
+function updateTailWag(dt){
+  const wag=state.tailWag;
+  if(!wag||!state.root)return;
+  wag.time+=dt;
+  const rotation=new THREE.Quaternion();
+  const axis=new THREE.Vector3(0,1,0);
+  wag.originals.forEach(({bone,q},i)=>{
+    const angle=.19*Math.sin(wag.time*3.8-i*.62);
+    rotation.setFromAxisAngle(axis,angle);
+    bone.quaternion.copy(q).multiply(rotation);
+  });
+  state.root.updateMatrixWorld(true);
+}
+async function processTailWeight(apply){
+  if(state.busy||!state.root)return;
+  const {mesh,chain}=activeTailSelection();
+  if(!mesh||!chain)return alertUser('Сначала выбери привязанный меш и хвост');
+  stopTailWag();
+  state.playing=false;
+  showFrame(0);
+  const original=state.tailUndo.get(mesh.uuid)?.original||null;
+  const height=Math.max(.001,new THREE.Box3().setFromObject(state.root)
+    .getSize(new THREE.Vector3()).y);
+  const radiusWorld=height*Number($('tail-radius').value)/100;
+  state.busy=true;
+  refreshControls();
+  const output=$('tail-weights-status');
+  try{
+    const region=await calculateTailRegion(mesh,chain.bones,{
+      radiusWorld,dryRun:!apply,source:original,
+      onProgress:p=>{if(p.percentage%10===0||p.percentage===100)
+        output.textContent='Анализ хвоста: '+p.percentage+'% · затронуто '+p.affected+' вершин';}
+    });
+    const percentage=(region.affected/region.totalVertices*100).toFixed(1);
+    if(!apply){
+      output.textContent='Найдено '+region.affected+' из '+region.totalVertices+
+        ' вершин ('+percentage+'%). Пока ничего не изменено.';
+      return;
+    }
+    if(region.affected===0)throw new Error('В выбранном меше нет вершин возле хвоста. Проверь меш и увеличь радиус.');
+    if(!window.confirm('Изменить веса '+region.affected+' вершин выбранного меша '+
+      (mesh.name||'без имени')+'? Остальные меши не затронем. Будет доступна отмена.'))return;
+    const previous=commitTailRegion(mesh,region);
+    if(!state.tailUndo.has(mesh.uuid))state.tailUndo.set(mesh.uuid,{mesh,original:previous});
+    output.textContent='Готово: '+region.affected+' вершин настроены для хвоста. '+
+      'Нажми «Тест виляния хвоста», оцени тело и при необходимости отмени.';
+    alertUser('Веса хвоста обновлены. Тело остальных мешей не менялось.');
+  }catch(error){
+    console.error('Tail weights',error);
+    output.textContent='Ошибка: '+(error?.message||String(error));
+    alertUser('Коррекция хвоста: '+(error?.message||String(error)));
+  }finally{
+    state.busy=false;refreshControls();
+  }
+}
+function undoTailWeights(){
+  if(state.busy)return;
+  stopTailWag();
+  const {mesh}=activeTailSelection();
+  const data=state.tailUndo.get(mesh?.uuid);
+  if(!data)return;
+  restoreTailRegion(mesh,data.original);
+  state.tailUndo.delete(mesh.uuid);
+  $('tail-weights-status').textContent='Исходные веса этого меша восстановлены.';
+  alertUser('Веса хвоста отменены!');
+  refreshTailEditor();
 }
 function closeMenu() {$('welcome').classList.add('hidden');}
 function openMenu() {$('welcome').classList.remove('hidden');}
@@ -1254,6 +1393,16 @@ $('show-bones').addEventListener('change',e=>{
 $('show-grid').addEventListener('change',e=>grid.visible=e.target.checked);
 onButton('save-glb',exportGLB);
 onButton('save-fbx',exportFBX);
+onButton('tail-preview',()=>processTailWeight(false));
+onButton('tail-apply',()=>processTailWeight(true));
+onButton('tail-undo',undoTailWeights);
+onButton('tail-wag',toggleTailWag);
+$('tail-radius').addEventListener('input',()=>{
+  $('tail-radius-label').textContent=$('tail-radius').value+'% роста';
+  $('tail-weights-status').textContent='Радиус изменён. Сначала проверь область, затем применяй.';
+});
+$('tail-mesh-select').addEventListener('change',refreshTailEditor);
+$('tail-chain-select').addEventListener('change',refreshTailEditor);
 
 function resize(){
   const v=$('viewport');
@@ -1286,6 +1435,7 @@ function animate(){
     }
   }
   if(state.rigGuide)syncRigMarkers();
+  updateTailWag(delta);
   orbit.update();
   renderer.render(scene,camera);
 }

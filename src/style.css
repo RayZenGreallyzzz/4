@@ -73,3 +73,15 @@
 .export-choices{display:grid;gap:9px;margin-bottom:10px}
 .export-choices .prominent{min-height:47px;font-size:12px}
 .export-choices .button.violet{border-color:#cf74f8;background:linear-gradient(120deg,#532974,#96399d)}
+
+/* Tail weight beta: opt-in only and reversible per mesh */
+.tail-weights-panel{background:linear-gradient(150deg,#10293a,#1c1b35);border-top:1px solid #3b7186}
+.tail-weights-panel .hint{line-height:1.55}
+.tail-weights-panel .field-label{margin-top:12px}
+.tail-weights-panel select{margin:5px 0}
+.tail-radius-field{display:flex;justify-content:space-between;margin:13px 0 2px;font-size:11px;color:#bfd3ef}
+.tail-radius-field span{color:#54efff;font-weight:800}
+.tail-radius-slider{width:100%;accent-color:#22e4f4;min-height:32px;touch-action:pan-y}
+.tail-actions{margin:12px 0}
+.tail-actions .button{min-height:37px;font-size:10px;white-space:normal}
+.tail-weight-status{font-size:10px;line-height:1.55;background:#12384c;border:1px solid #306c82;padding:10px;color:#bfe9f3;border-radius:9px;overflow-wrap:anywhere}
