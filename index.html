@@ -49,9 +49,33 @@
             <option value="local">Локальные оси — похожие скелеты Mixamo</option>
             <option value="world">Мировые оси — другая постановка костей</option>
           </select>
-          <button id="import-animations" type="button" class="button cyan full-width" disabled>＋ ДОБАВИТЬ АНИМАЦИИ GLB / FBX</button>
+          <button id="import-animations" type="button" class="button cyan full-width" disabled>＋ ДОБАВИТЬ АНИМАЦИИ / ZIP</button>
           <p id="animation-import-status" class="hint">Загрузи персонажа, затем добавь набор отдельных движений (до 200 файлов за раз). Исходный персонаж останется на месте.</p>
           <p class="hint">Поддерживаются все совпавшие кости, в том числе пальцы (до 41 у Mixamo). На AutoRig с 22 костями переносятся 22 доступные, остальные безопасно пропускаются. Root motion пока не импортируется.</p>
+        </div>
+        <div class="animation-gallery">
+          <div class="animation-gallery-top">
+            <strong>Библиотека движений</strong>
+            <small id="animation-gallery-count">0 / 0 анимаций</small>
+          </div>
+          <input id="animation-search" type="search" class="full-width"
+            placeholder="⌕ Найти: бег, удар, стойка…" aria-label="Поиск анимаций"/>
+          <div class="animation-gallery-layout">
+            <div id="animation-gallery-list" class="animation-gallery-list"
+              aria-label="Список анимаций"></div>
+            <div class="animation-preview-panel">
+              <strong id="preview-animation-name">Предпросмотр</strong>
+              <div id="animation-preview-stage" class="animation-preview-stage">
+                <span class="animation-preview-placeholder">▶ Нажми на название анимации</span>
+              </div>
+              <p id="preview-animation-status" class="hint">
+                Здесь проигрывается выбранное движение на маленьком 3D-манекене.
+              </p>
+              <button type="button" id="preview-add-clip" class="button cyan"
+                disabled>✓ Выбрать эту анимацию</button>
+            </div>
+          </div>
+          <p class="hint">Окошко предпросмотра не изменяет текущую позу персонажа. Для работы на планшете показывается только один 3D-просмотр одновременно.</p>
         </div>
       </section>
       <section class="panel autorig-panel">
@@ -253,6 +277,6 @@
 <div id="toast" role="status" aria-live="polite"></div>
 <input id="model-file" type="file" accept=".glb,.gltf,.fbx,.bin,.png,.jpg,.jpeg,.webp" multiple hidden/>
 <input id="fit-file" type="file" accept=".json,application/json" hidden/>
-<input id="animation-files" type="file" accept=".glb,.gltf,.fbx" multiple hidden/>
+<input id="animation-files" type="file" accept=".glb,.gltf,.fbx,.zip,application/zip" multiple hidden/>
 <script type="module" src="/src/main.js"></script>
 </body></html>

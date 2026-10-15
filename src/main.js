@@ -17,6 +17,11 @@ import './style.css';
 
 const $ = id => document.getElementById(id);
 const NativeFileSaver = registerPlugin('NativeFileSaver');
+// Preserve lightweight source handles for optional 3D previews.
+// No 3D mannequin is kept in memory per row.
+const clipPreviewSources = new WeakMap();
+let clipPreviewTool=null;
+let clipPreviewIndex=-1;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#0c1524');
 const camera = new THREE.PerspectiveCamera(42, 1, 0.001, 1200);
@@ -80,6 +85,8 @@ const report = s => { $('status').textContent = '● ' + s; };
 const onButton = (id, fn) => $(id).addEventListener('click',fn);
 
 function disposeModel() {
+  clipPreviewTool?.clear();
+  clipPreviewIndex=-1;
   stopTailWag();
   state.tailWagUndo=null;
   state.tailPoseActive=false;
@@ -609,7 +616,8 @@ async function addAnimationFiles(files) {
       bones:state.bones,bind:state.bind,mode:$('retarget-mode').value,
       onProgress:p=>status.textContent='Обработка '+p.index+'/'+p.total+
         ': '+p.name+' · клипов '+p.loaded+' · ошибок '+p.failed,
-      onClip:clip=>{
+      onClip:(clip,outcome,fetchBlob,fileName)=>{
+        clipPreviewSources.set(clip,{fetchBlob,fileName,matched:outcome.matched,total:outcome.total});
         let title=clip.name,serial=2;
         while(state.sourceClips.some(c=>c.name===title)){
           title=clip.name+' ('+serial+')';serial++;
@@ -737,6 +745,9 @@ async function importCharacter(files) {
     state.lookup = boneLookup(bones);
     state.bind = new Map(bones.map(b=>[b.uuid,b.quaternion.clone()]));
     state.sourceClips = clips;
+    for(const clip of clips)clipPreviewSources.set(clip,{
+      fileName:main.name,fetchBlob:async()=>main
+    });
     state.sourceIndex = clips.length ? 0 : -1;
     state.frames = clips.length ? Math.min(MAX_FRAMES,Math.max(1,Math.round(clips[0].duration*FPS))) : 90;
     state.clipName = clips[0]?.name || 'New Animation';
@@ -842,8 +853,72 @@ function buildClipMenu() {
   }
   menu.add(new Option('✦ Создать новую анимацию','new'));
   menu.value = state.sourceIndex<0 ? 'new' : String(state.sourceIndex);
+  drawAnimationGallery();
 }
 
+function drawAnimationGallery(){
+  const list=$('animation-gallery-list');
+  if(!list)return;
+  const query=$('animation-search').value.trim().toLocaleLowerCase('ru-RU');
+  list.replaceChildren();
+  const indices=state.sourceClips.map((clip,i)=>({clip,i}))
+    .filter(({clip})=>!query||clip.name.toLocaleLowerCase('ru-RU').includes(query));
+  const fragment=document.createDocumentFragment();
+  for(const {clip,i} of indices.slice(0,200)){
+    const row=document.createElement('div');
+    row.className='animation-gallery-item'+(i===clipPreviewIndex?' is-preview':'');
+    const button=document.createElement('button');
+    button.type='button';
+    button.className='animation-gallery-play';
+    button.textContent='▶';
+    button.title='Показать движение '+clip.name;
+    button.setAttribute('aria-label','Предпросмотр '+clip.name);
+    const name=document.createElement('span');
+    name.className='animation-gallery-name';
+    name.textContent=clip.name;
+    name.title=clip.name;
+    const meta=clipPreviewSources.get(clip);
+    const subtitle=document.createElement('small');
+    subtitle.textContent=meta?.matched!=null?'Кости '+meta.matched+'/'+meta.total
+      :Math.max(.01,clip.duration).toFixed(1)+' с';
+    row.append(button,name,subtitle);
+    row.addEventListener('click',()=>showAnimationPreview(i));
+    fragment.append(row);
+  }
+  list.append(fragment);
+  $('animation-gallery-count').textContent=
+    indices.length+' / '+state.sourceClips.length+' анимаций';
+  $('preview-add-clip').disabled=clipPreviewIndex<0||clipPreviewIndex>=state.sourceClips.length||state.busy;
+  $('preview-add-clip').textContent=clipPreviewIndex===state.sourceIndex
+    ? '✓ Уже выбрана':'✓ Выбрать эту анимацию';
+}
+async function showAnimationPreview(index){
+  const clip=state.sourceClips[index];
+  if(!clip||state.busy)return;
+  clipPreviewIndex=index;
+  drawAnimationGallery();
+  $('preview-animation-name').textContent=clip.name;
+  const note=$('preview-animation-status');
+  note.textContent='Подготавливаем 3D…';
+  try{
+    if(!clipPreviewTool){
+      const {AnimationPreview}=await import('./animationpreview.js');
+      clipPreviewTool=new AnimationPreview($('animation-preview-stage'));
+    }
+    // A separate source model is loaded for the small window.
+    // The main character and timeline remain untouched.
+    const source=clipPreviewSources.get(clip);
+    await clipPreviewTool.load(source?.fetchBlob,source?.fileName||clip.name,
+      msg=>{if(clipPreviewIndex===index)note.textContent=msg;});
+  }catch(error){
+    note.textContent='Предпросмотр недоступен: '+(error?.message||String(error));
+  }
+}
+function applyPreviewClip(){
+  if(clipPreviewIndex<0||!state.sourceClips[clipPreviewIndex])return;
+  switchClip(String(clipPreviewIndex));
+  drawAnimationGallery();
+}
 function switchClip(value) {
   const next = value === 'new' ? -1 : Number(value);
   if (next>=0 && !state.sourceClips[next]) return;
@@ -860,6 +935,7 @@ function switchClip(value) {
   $('duration').value = String(state.frames);
   showFrame(0);
   drawBoneList();
+  drawAnimationGallery();
 }
 
 function drawBoneList() {
@@ -1549,6 +1625,8 @@ for(const axis of ['x','y','z'])
 
 onButton('new-clip',()=>switchClip('new'));
 onButton('import-animations',()=>$('animation-files').click());
+$('animation-search').addEventListener('input',drawAnimationGallery);
+onButton('preview-add-clip',applyPreviewClip);
 $('animation-files').addEventListener('change',event=>{
   const files=[...(event.target.files||[])];event.target.value='';
   addAnimationFiles(files);
@@ -1653,6 +1731,7 @@ function animate(){
   updateTailWag(delta);
   orbit.update();
   renderer.render(scene,camera);
+  clipPreviewTool?.update(delta);
 }
 animate();
 refreshFolderInfo();

@@ -106,3 +106,30 @@
 .folder-panel .hint{margin:0;font-size:10px;line-height:1.6;overflow-wrap:anywhere}
 
 .animation-import-panel select{font-size:11px;min-height:37px;padding:8px;color:#d9ecff;background:#101f35;border:1px solid #376b80;border-radius:8px}
+
+/* One side-by-side animation browser, one active WebGL preview for all clips. */
+.animation-gallery{margin-top:14px;padding:10px;border:1px solid #33647d;border-radius:10px;background:#0d1b30}
+.animation-gallery-top{display:flex;justify-content:space-between;gap:7px;align-items:center;margin-bottom:10px}
+.animation-gallery-top strong{font-size:12px;color:#b9f3ff}
+.animation-gallery-top small{font-size:10px;color:#83a8c1}
+.animation-gallery input{font-size:11px;min-height:35px;padding:7px;margin-bottom:9px}
+.animation-gallery-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(135px,42%);gap:8px}
+.animation-gallery-list{height:250px;max-height:250px;overflow-y:auto;overscroll-behavior:contain;border:1px solid #2b4a67;border-radius:8px;background:#0b1426}
+.animation-gallery-item{display:grid;grid-template-columns:22px minmax(0,1fr);gap:1px 5px;padding:8px 6px;cursor:pointer;border-bottom:1px solid #23374e;align-items:center}
+.animation-gallery-item:last-child{border-bottom:0}
+.animation-gallery-item.is-preview{background:linear-gradient(100deg,#0b5267,#1c2b4a)}
+.animation-gallery-play{border:0;border-radius:6px;background:#155e75;color:#99f6e4;min-height:27px;min-width:22px;font-size:11px}
+.animation-gallery-name{font-size:10px;line-height:1.25;overflow-wrap:anywhere;color:#e6f7ff;font-weight:600}
+.animation-gallery-item small{grid-column:2;color:#82a7c4;font-size:9px}
+.animation-preview-panel{display:flex;flex-direction:column;align-items:stretch;min-width:0;gap:5px}
+.animation-preview-panel strong{color:#d2eeff;font-size:10px;overflow-wrap:anywhere;line-height:1.3;max-height:34px;overflow:hidden}
+.animation-preview-stage{width:100%;aspect-ratio:1/1;max-height:180px;position:relative;background:#091528;border:1px solid #457592;border-radius:7px;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.animation-preview-stage canvas{position:absolute;inset:0;display:block}
+.animation-preview-placeholder{font-size:10px;text-align:center;color:#7ba9c5;padding:7px}
+.animation-preview-stage:has(canvas) .animation-preview-placeholder{display:none}
+.animation-preview-panel .hint{margin:0;font-size:9px;line-height:1.4;color:#c0d6e7;overflow-wrap:anywhere}
+.animation-preview-panel .button{font-size:9px;min-height:38px;white-space:normal;line-height:1.25;padding:6px}
+@media(max-width:380px){
+ .animation-gallery-layout{grid-template-columns:minmax(0,1fr) 128px;gap:5px}
+ .animation-gallery-item{padding:6px 4px}
+}
