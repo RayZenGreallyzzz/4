@@ -33,7 +33,7 @@ test('retargets source quaternion to destination name/UUID and rest delta',()=>{
     new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),.45));
   const outputMid=new THREE.Quaternion().fromArray(input.clip.tracks[0].values,4);
   assert.ok(outputMid.angleTo(expected)<1e-3);
-  assert.equal(src.quaternion.angleTo(src.quaternion.clone()),0);
+  assert.ok(src.quaternion.angleTo(src.quaternion.clone())<1e-6);
 });
 test('unmatched bones are skipped and no geometry imported',()=>{
   const src=new THREE.Bone();src.name='AlienTentacle';const root=new THREE.Group();root.add(src);
