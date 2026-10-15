@@ -162,6 +162,21 @@
           <button id="tail-wag" type="button" class="button violet" disabled>▶ Тест виляния хвоста</button>
           <button id="tail-undo" type="button" class="button outline" disabled>↶ Отменить веса</button>
         </div>
+        <div class="tail-pose-panel">
+          <h4>↶ Положение хвоста после привязки</h4>
+          <p class="hint">Двигай хвост в сторону и вверх/вниз. Это поворачивает кости, не меняя веса и привязку тела.</p>
+          <label for="tail-side" class="tail-pose-label">Влево / вправо <b id="tail-side-label">0°</b></label>
+          <input id="tail-side" type="range" min="-60" max="60" step="1" value="0" disabled/>
+          <label for="tail-lift" class="tail-pose-label">Поднять / опустить <b id="tail-lift-label">0°</b></label>
+          <input id="tail-lift" type="range" min="-40" max="40" step="1" value="0" disabled/>
+          <div class="tail-pose-actions">
+            <button id="tail-pose-key" type="button" class="button cyan" disabled>◆ Записать позу в текущий кадр</button>
+            <button id="tail-pose-reset" type="button" class="button outline" disabled>↺ Сбросить сдвиг</button>
+            <button id="tail-wag-bake" type="button" class="button violet" disabled>♪ Записать виляние в анимацию</button>
+            <button id="tail-wag-undo" type="button" class="button outline" disabled>↶ Отменить записанное виляние</button>
+          </div>
+          <p id="tail-pose-status" class="hint">Ползунки показывают результат без записи. Чтобы хвост сохранился в GLB/FBX, запиши позу или виляние на таймлайн.</p>
+        </div>
         <p id="tail-weights-status" class="tail-weight-status">Загрузи персонажа с привязанным хвостом. Перед экспериментами сохрани исходный GLB и подгонку JSON.</p>
         <p class="hint">Если всё тело — один меш, сначала поставь небольшой радиус (3–5%) и проверь количество вершин. Если трогается броня или корпус — отмени.</p>
       </section>

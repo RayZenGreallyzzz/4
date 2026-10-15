@@ -85,3 +85,13 @@
 .tail-actions{margin:12px 0}
 .tail-actions .button{min-height:37px;font-size:10px;white-space:normal}
 .tail-weight-status{font-size:10px;line-height:1.55;background:#12384c;border:1px solid #306c82;padding:10px;color:#bfe9f3;border-radius:9px;overflow-wrap:anywhere}
+
+/* Post-bind tail posing, live angular controls and baked 30 FPS keys. */
+.tail-pose-panel{display:grid;gap:8px;margin:13px 0;padding:12px;border:1px solid #6f56ab;background:linear-gradient(155deg,#242044,#17334a);border-radius:11px}
+.tail-pose-panel h4{margin:0;font-size:12px;color:#ead1ff}
+.tail-pose-panel .hint{font-size:10px;line-height:1.55;margin:2px 0}
+.tail-pose-panel .tail-pose-label{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:#d6d9f2}
+.tail-pose-label b{font-weight:800;color:#5beafb}
+.tail-pose-panel input[type=range]{accent-color:#bd76ff;width:100%;min-height:32px;touch-action:pan-y}
+.tail-pose-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:4px}
+.tail-pose-actions .button{white-space:normal;font-size:10px;line-height:1.2;min-height:42px;padding:7px}

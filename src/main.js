@@ -9,6 +9,7 @@ import { FPS, MAX_FRAMES, Timeline, boneLookup, compileClip, clampFrame } from '
 import { JOINTS, createGuide, jointWorld, moveJointWorld, serializeFit, restoreFit, addGuideChain, removeGuideChain } from './autorig.js';
 import { bindRigToMeshes } from './skinning.js';
 import { findTailChains, calculateTailRegion, commitTailRegion, restoreTailRegion } from './tailweights.js';
+import { tailPoseQuaternion, tailWagQuaternion, tailWagFrames } from './tailpose.js';
 import { exportFbxBinary, countVertices } from './fbx.js';
 import { fitGuideToGeometry } from './bodyfit.js';
 import './style.css';
@@ -64,7 +65,7 @@ const state = {
   rafStamp: 0, frameCarry: 0, toastTimer: null,
   rigGuide:null, rigVisual:null, rigMarkers:[], rigSelected:'mixamorigHips',
   rigEnabled:true, rigEditMode:'touch', rigSnapMode:false, rigBound:false,
-  tailMeshes:[], tailChains:[], tailUndo:new Map(), tailWag:null
+  tailMeshes:[], tailChains:[], tailUndo:new Map(), tailWag:null, tailPoseActive:false, tailWagUndo:null
 };
 const alertUser = msg => {
   const e = $('toast');
@@ -78,6 +79,8 @@ const onButton = (id, fn) => $(id).addEventListener('click',fn);
 
 function disposeModel() {
   stopTailWag();
+  state.tailWagUndo=null;
+  state.tailPoseActive=false;
   state.tailUndo.clear();
   state.tailMeshes=[];
   state.tailChains=[];
@@ -731,6 +734,7 @@ function preview(frame) {
 }
 
 function showFrame(value, repaint=true) {
+  clearTailPoseControls();
   state.frame = clampFrame(value,state.frames);
   $('seek').max = String(state.frames);
   $('seek').value = String(state.frame);
@@ -1155,12 +1159,113 @@ function refreshTailEditor(){
     $(id).disabled=!usable;
   $('tail-wag').disabled=!usable;
   $('tail-undo').disabled=!usable || !state.tailUndo.has(mesh.uuid);
+  for(const id of ['tail-side','tail-lift','tail-pose-key','tail-pose-reset','tail-wag-bake'])
+    $(id).disabled=!usable;
+  $('tail-wag-undo').disabled=state.busy||!state.tailWagUndo||
+    state.tailWagUndo.chainId!==chain?.id;
+  $('tail-side-label').textContent=$('tail-side').value+'°';
+  $('tail-lift-label').textContent=$('tail-lift').value+'°';
   $('tail-wag').textContent=state.tailWag?'■ Остановить виляние':'▶ Тест виляния хвоста';
   $('tail-radius-label').textContent=$('tail-radius').value+'% роста';
   if(!state.tailMeshes.length)$('tail-weights-status').textContent=
     'Сначала нажми «Привязать модель к скелету» или открой GLB с готовым ригом.';
   else if(!state.tailChains.length)$('tail-weights-status').textContent=
     'Не найдены кости Tail_01...Tail_05. Добавь цепочку хвоста в AutoRig.';
+}
+function clearTailPoseControls(){
+  state.tailPoseActive=false;
+  $('tail-side').value='0';
+  $('tail-lift').value='0';
+  $('tail-side-label').textContent='0°';
+  $('tail-lift-label').textContent='0°';
+}
+function previewTailPoseFromSliders(){
+  if(state.busy||!state.root)return;
+  const {mesh,chain}=activeTailSelection();
+  if(!mesh||!chain)return;
+  stopTailWag();
+  state.playing=false;
+  // Each interaction starts from the recorded pose, never compounds turns.
+  preview(state.frame);
+  const side=Number($('tail-side').value);
+  const lift=Number($('tail-lift').value);
+  chain.bones.forEach((bone,i)=>{
+    bone.quaternion.copy(tailPoseQuaternion(bone.quaternion,i,chain.bones.length,side,lift));
+  });
+  state.root.updateMatrixWorld(true);
+  state.tailPoseActive=side!==0||lift!==0;
+  $('tail-side-label').textContent=side+'°';
+  $('tail-lift-label').textContent=lift+'°';
+  $('tail-pose-status').textContent=state.tailPoseActive
+    ? 'Это пока предпросмотр! Нажми «Записать позу в текущий кадр».'
+    : 'Исходная поза на текущем кадре. Сдвинь хвост ползунками.';
+}
+function resetTailPose(){
+  stopTailWag();
+  clearTailPoseControls();
+  preview(state.frame);
+  $('tail-pose-status').textContent='Временный сдвиг отменён. Уже записанные ключи сохранены.';
+}
+function saveTailPoseKey(){
+  if(state.busy||!state.root)return;
+  const {chain}=activeTailSelection();
+  if(!chain)return alertUser('Выбери цепочку хвоста');
+  stopTailWag();
+  state.playing=false;
+  // Save the pose currently visible; do NOT call preview before reading it.
+  for(const bone of chain.bones)
+    state.timeline.set(bone,state.frame,bone.quaternion,state.frames);
+  state.tailWagUndo=null;
+  clearTailPoseControls();
+  showFrame(state.frame);
+  drawBoneList();drawKeys();refreshAngles();
+  $('tail-pose-status').textContent='Поза хвоста записана на кадре '+state.frame+
+    '. Теперь она войдёт в экспорт анимации GLB или FBX.';
+  alertUser('Поза хвоста записана: '+chain.bones.length+' костей, кадр '+state.frame);
+}
+function bakeTailWag(){
+  if(state.busy||!state.root)return;
+  const {mesh,chain}=activeTailSelection();
+  if(!mesh||!chain)return alertUser('Выбери меш и цепочку хвоста');
+  if(chain.bones.some(b=>state.timeline.forBone(b).size>0) &&
+    !window.confirm('На хвосте уже есть ключи. Заменить их вилянием? Другие кости не изменятся.'))return;
+  stopTailWag();
+  state.playing=false;
+  clearTailPoseControls();
+  const backup=chain.bones.map(bone=>({bone,frames:
+    new Map([...state.timeline.forBone(bone)].map(([frame,q])=>[frame,q.clone()]))}));
+  const frames=tailWagFrames(state.frames);
+  const captured=[];
+  // Capture all existing animated poses BEFORE changing any timeline keys.
+  for(const frame of frames){
+    preview(frame);
+    captured.push({frame,quaternions:chain.bones.map(bone=>bone.quaternion.clone())});
+  }
+  for(const {bone} of backup)state.timeline.keys.delete(bone.uuid);
+  for(const {frame,quaternions} of captured)
+    quaternions.forEach((q,i)=>state.timeline.set(chain.bones[i],frame,
+      tailWagQuaternion(q,i,frame,state.frames),state.frames));
+  state.tailWagUndo={chainId:chain.id,entries:backup};
+  showFrame(0);
+  drawBoneList();drawKeys();refreshControls();
+  $('tail-pose-status').textContent='Виляние ЗАПИСАНО: '+frames.length+
+    ' ключей для каждой кости хвоста. Нажми ▶ Играть, затем сохрани GLB/FBX.';
+  alertUser('Виляние записано в таймлайн и будет включено в экспорт!');
+}
+function undoBakedTailWag(){
+  if(state.busy||!state.tailWagUndo)return;
+  stopTailWag();
+  const {chainId,entries}=state.tailWagUndo;
+  if(!window.confirm('Отменить записанное виляние '+chainId+' и вернуть прежние ключи?'))return;
+  for(const {bone,frames} of entries){
+    state.timeline.keys.delete(bone.uuid);
+    for(const [frame,q] of frames)state.timeline.set(bone,frame,q,state.frames);
+  }
+  state.tailWagUndo=null;
+  showFrame(state.frame);
+  drawBoneList();drawKeys();refreshControls();
+  $('tail-pose-status').textContent='Записанное виляние отменено; прежние ключи восстановлены.';
+  alertUser('Виляние отменено; ключи хвоста восстановлены.');
 }
 function stopTailWag(){
   if(!state.tailWag)return;
@@ -1397,12 +1502,18 @@ onButton('tail-preview',()=>processTailWeight(false));
 onButton('tail-apply',()=>processTailWeight(true));
 onButton('tail-undo',undoTailWeights);
 onButton('tail-wag',toggleTailWag);
+$('tail-side').addEventListener('input',previewTailPoseFromSliders);
+$('tail-lift').addEventListener('input',previewTailPoseFromSliders);
+onButton('tail-pose-key',saveTailPoseKey);
+onButton('tail-pose-reset',resetTailPose);
+onButton('tail-wag-bake',bakeTailWag);
+onButton('tail-wag-undo',undoBakedTailWag);
 $('tail-radius').addEventListener('input',()=>{
   $('tail-radius-label').textContent=$('tail-radius').value+'% роста';
   $('tail-weights-status').textContent='Радиус изменён. Сначала проверь область, затем применяй.';
 });
-$('tail-mesh-select').addEventListener('change',refreshTailEditor);
-$('tail-chain-select').addEventListener('change',refreshTailEditor);
+$('tail-mesh-select').addEventListener('change',()=>{resetTailPose();refreshTailEditor();});
+$('tail-chain-select').addEventListener('change',()=>{resetTailPose();refreshTailEditor();});
 
 function resize(){
   const v=$('viewport');
