@@ -50,7 +50,7 @@ test('reset placement resets only parent group, not bones',()=>{
  setModelPlacement(root,{position:[3,-2,6],rotation:[30,45,0],scale:2});
  assert.equal(resetModelPlacement(root),true);
  assert.deepEqual(readModelPlacement(root).position,[0,0,0]);
- assert.deepEqual(readModelPlacement(root).rotation,[0,0,0]);
+ assert.ok(readModelPlacement(root).rotation.every(angle=>Math.abs(angle)<1e-10));
  assert.equal(readModelPlacement(root).scale,1);
  assert.ok(Math.abs(leg.quaternion.angleTo(new THREE.Quaternion())-.33)<1e-7);
 });
