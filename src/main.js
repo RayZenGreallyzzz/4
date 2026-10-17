@@ -6,7 +6,7 @@ import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { FPS, MAX_FRAMES, Timeline, boneLookup, compileClip, clampFrame } from './timeline.js';
-import { JOINTS, createGuide, jointWorld, moveJointWorld, serializeFit, restoreFit, addGuideChain, removeGuideChain } from './autorig.js';
+import { JOINTS, createGuide, jointWorld, moveJointWorld, mirrorGuideJoint, serializeFit, restoreFit, addGuideChain, removeGuideChain } from './autorig.js';
 import { bindRigToMeshes } from './skinning.js';
 import { findTailChains, calculateTailRegion, commitTailRegion, restoreTailRegion } from './tailweights.js';
 import { tailPoseQuaternion, tailWagQuaternion, tailWagFrames } from './tailpose.js';
@@ -53,6 +53,8 @@ scene.add(rigTransform.getHelper());
 rigTransform.getHelper().visible = false;
 rigTransform.addEventListener('dragging-changed',event=>{orbit.enabled=!event.value;});
 rigTransform.addEventListener('objectChange',()=>{
+  if(state.rigMirror&&state.rigSelected!=='__root__')
+    mirrorGuideJoint(state.rigGuide,state.rigSelected);
   syncRigMarkers();
   refreshRigFields();
 });
@@ -87,7 +89,7 @@ const state = {
   clipName: 'Новая анимация', clipboard: null, busy: false, loading: false,
   rafStamp: 0, frameCarry: 0, toastTimer: null,
   rigGuide:null, rigVisual:null, rigMarkers:[], rigSelected:'mixamorigHips',
-  rigEnabled:true, rigEditMode:'touch', rigSnapMode:false, rigBound:false,
+  rigEnabled:true, rigEditMode:'touch', rigSnapMode:false, rigMirror:false, rigBound:false,
   tailMeshes:[], tailChains:[], tailUndo:new Map(), tailWag:null, tailPoseActive:false, tailWagUndo:null,
   folderConfigured:false
 };
@@ -252,6 +254,7 @@ function refreshRigFields() {
   $('autorig-front').disabled=!has;
   $('autorig-side').disabled=!has;
   $('autorig-arrows').disabled=!has;
+  $('autorig-mirror').disabled=!has;
   for(const axis of ['x','y','z']) {
     const field=$('autorig-'+axis);
     field.disabled=!has;
@@ -287,6 +290,7 @@ function refreshRigFields() {
     :'Модель без скелета. После добавления AutoRig анализирует реальную геометрию корпуса.';
   $('autorig-fit-state').classList.toggle('autorig-ready',has);
   $('autorig-arrows').checked=state.rigEditMode==='arrows';
+  $('autorig-mirror').checked=state.rigMirror;
   $('autorig-drag-tip').textContent=state.rigEditMode==='touch'
     ? 'Режим пальца: коснись цветной точки и перетаскивай её по модели. Для глубины поверни вид сбоку.'
     : 'Режим стрелок: двигай оси выбранного сустава. Выбор сустава — в списке.';
@@ -456,6 +460,12 @@ function applyGeometryFit(ask=true) {
   }
 }
 
+// Apply one joint edit, and optionally its symmetrical counterpart.
+function moveFittedJoint(name,position){
+ if(!moveJointWorld(state.rigGuide,name,position))return false;
+ if(state.rigMirror)mirrorGuideJoint(state.rigGuide,name);
+ return true;
+}
 function editRigCoordinate(axis,raw) {
   if(!state.rigGuide||state.busy)return;
   const value=Number(raw);
@@ -463,7 +473,7 @@ function editRigCoordinate(axis,raw) {
   const point=jointWorld(state.rigGuide,state.rigSelected);
   if(!point)return;
   point[axis]=value;
-  moveJointWorld(state.rigGuide,state.rigSelected,point);
+  moveFittedJoint(state.rigSelected,point);
   syncRigMarkers();
   refreshRigFields();
   saveFitDraft();
@@ -643,7 +653,7 @@ dom.addEventListener('pointerdown',event=>{
     const inside=/Arm|Hand|Leg|Foot|Toe|Shoulder|Ear|Tail|Wing/i.test(part)
       ? .025*h : .048*h;
     const target=hits[0].point.clone().addScaledVector(rigRaycaster.ray.direction,inside);
-    if(moveJointWorld(state.rigGuide,part,target)){
+    if(moveFittedJoint(part,target)){
       state.rigSnapMode=false;
       syncRigMarkers();
       refreshRigFields();
@@ -678,7 +688,7 @@ dom.addEventListener('pointermove',event=>{
   event.preventDefault();event.stopImmediatePropagation();
   const intersection=pointerRay(event.clientX,event.clientY).intersectPlane(rigDragPlane,new THREE.Vector3());
   if(!intersection)return;
-  moveJointWorld(state.rigGuide,rigDrag.name,intersection.add(rigDrag.offset));
+  moveFittedJoint(rigDrag.name,intersection.add(rigDrag.offset));
   syncRigMarkers();
   // Avoid rebuilding full panel on every high-frequency pointer event.
   for(const axis of ['x','y','z']) {
@@ -1822,6 +1832,13 @@ $('autorig-arrows').addEventListener('change',event=>{
   state.rigEditMode=event.target.checked?'arrows':'touch';
   syncRigMarkers();
   refreshRigFields();
+});
+$('autorig-mirror').addEventListener('change',event=>{
+ state.rigMirror=event.target.checked;
+ // Do not overwrite the opposite side immediately. Mirror only future
+ // deliberate edits while the checkbox is enabled.
+ refreshRigFields();
+ alertUser(state.rigMirror?'⇆ Зеркальное перемещение включено':'Зеркальное перемещение выключено');
 });
 $('autorig-selected').addEventListener('change',event=>chooseRigJoint(event.target.value));
 $('autorig-visible').addEventListener('change',event=>{
