@@ -12,6 +12,7 @@ import { findTailChains, calculateTailRegion, commitTailRegion, restoreTailRegio
 import { tailPoseQuaternion, tailWagQuaternion, tailWagFrames } from './tailpose.js';
 import { exportFbxBinary, countVertices } from './fbx.js';
 import { importAnimationBatch } from './animationbatch.js';
+import {appendActionClip} from './action-library.js';
 import { fitGuideToGeometry } from './bodyfit.js';
 import { boneLabel, boneNameKey, boneMatchesSearch } from './bone-locale.js';
 import {readModelPlacement,setModelPlacement,resetModelPlacement} from './model-placement.js';
@@ -986,14 +987,19 @@ async function showAnimationPreview(index){
   const note=$('preview-animation-status');
   note.textContent='Подготавливаем 3D…';
   try{
+    const source=clipPreviewSources.get(clip);
+    if(!source){
+      clipPreviewTool?.clear();
+      note.textContent='Это действие создано вручную. Нажми «Выбрать эту анимацию», затем ▶ Играть в основном окне.';
+      return;
+    }
     if(!clipPreviewTool){
       const {AnimationPreview}=await import('./animationpreview.js');
       clipPreviewTool=new AnimationPreview($('animation-preview-stage'));
     }
     // A separate source model is loaded for the small window.
     // The main character and timeline remain untouched.
-    const source=clipPreviewSources.get(clip);
-    await clipPreviewTool.load(source?.fetchBlob,source?.fileName||clip.name,
+    await clipPreviewTool.load(source.fetchBlob,source.fileName||clip.name,
       msg=>{if(clipPreviewIndex===index)note.textContent=msg;});
   }catch(error){
     note.textContent='Предпросмотр недоступен: '+(error?.message||String(error));
@@ -1003,6 +1009,35 @@ function applyPreviewClip(){
   if(clipPreviewIndex<0||!state.sourceClips[clipPreviewIndex])return;
   switchClip(String(clipPreviewIndex));
   drawAnimationGallery();
+}
+function saveActionToLibrary(){
+  if(!state.root||!state.bones.length||state.busy)return;
+  if(!state.timeline.count){
+    alertUser('Сначала создай ключи анимации. Например, для бега — несколько поз лап.');
+    return;
+  }
+  state.playing=false;
+  stopTailWag();
+  try{
+    const compiled=exportClip();
+    const {clip,index}=appendActionClip(state.sourceClips,compiled);
+    // Store the new action as a separate AnimationClip. Previous clips and
+    // imported animations remain unchanged, including the edited source clip.
+    state.timeline.clear();
+    state.sourceIndex=index;
+    state.action=null;
+    state.clipName=clip.name;
+    state.frames=Math.min(MAX_FRAMES,Math.max(1,Math.round(clip.duration*FPS)));
+    $('clip-name').value=clip.name;
+    $('duration').value=String(state.frames);
+    if(!state.mixer)state.mixer=new THREE.AnimationMixer(state.root);
+    showFrame(0);
+    buildClipMenu();
+    drawKeys();drawBoneList();refreshControls();
+    alertUser('✓ «'+clip.name+'» добавлено! Действий: '+state.sourceClips.length+'. Сохрани GLB.');
+  }catch(error){
+    alertUser('Не удалось добавить движение: '+(error?.message||String(error)));
+  }
 }
 function switchClip(value) {
   const next = value === 'new' ? -1 : Number(value);
@@ -1106,6 +1141,7 @@ function refreshControls() {
   $('delete-key').disabled = !rigged || !state.selected || !state.timeline.has(state.selected,state.frame);
   $('paste-pose').disabled = !rigged || !state.clipboard;
   $('import-animations').disabled = !rigged;
+  $('save-action').disabled = !rigged||!state.timeline.count;
   $('frame-number').disabled = !ready;
   for(const b of document.querySelectorAll('[data-frame-jump]')){
     b.disabled=!ready||Number(b.dataset.frameJump)>state.frames;
@@ -1734,6 +1770,7 @@ for(const axis of ['x','y','z'])
   $('autorig-'+axis).addEventListener('change',event=>editRigCoordinate(axis,event.target.value));
 
 onButton('new-clip',()=>switchClip('new'));
+onButton('save-action',saveActionToLibrary);
 onButton('import-animations',()=>$('animation-files').click());
 $('animation-search').addEventListener('input',drawAnimationGallery);
 onButton('preview-add-clip',applyPreviewClip);

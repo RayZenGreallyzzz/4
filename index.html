@@ -78,6 +78,8 @@
         <label class="field-label" for="clip-select">Анимация персонажа</label><select id="clip-select" class="full-width"></select>
         <div class="two-fields"><label>Название<input id="clip-name" maxlength="70" value="Новая анимация" /></label><label>Кадров<input id="duration" type="number" min="1" max="1200" value="90"/></label></div>
         <button id="new-clip" type="button" class="button outline full-width">✦ Новая анимация</button>
+        <button id="save-action" type="button" class="button cyan full-width" disabled>✓ СОХРАНИТЬ ДЕЙСТВИЕ В НАБОР</button>
+        <p class="hint">Например: у пса уже есть Idle, Walk, Attack. Создай Run, нажми «Сохранить действие в набор», затем так же добавь Death. Все пять движений останутся в одном GLB.</p>
         <details class="animation-guide" open>
           <summary>❔ Как создать свою анимацию — пошагово</summary>
           <ol>
