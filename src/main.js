@@ -1343,8 +1343,32 @@ async function saveFile(buffer,name,mime,progress=()=>{}) {
   return {saved:false,browserDownload:true};
 }
 
+function ensureSavedAnimationSet(){
+ if(state.animationSelection.isDirty()){
+  alertUser('Сначала нажми «Сохранить выбранные в набор», затем экспортируй модель.');
+  return false;
+ }
+ if(state.sourceIndex<0&&state.timeline.count){
+  alertUser('У тебя есть новое действие с ключами. Нажми «Сохранить действие в набор» перед экспортом.');
+  return false;
+ }
+ return true;
+}
+function selectedAnimationClipsForExport(){
+ const selected=state.animationSelection.selected(state.sourceClips);
+ // The editor may be working on a selected existing action; preserve
+ // the temporary edits of THAT clip without affecting any other action.
+ if(state.timeline.count && state.sourceIndex>=0){
+  const original=state.sourceClips[state.sourceIndex];
+  if(original && state.animationSelection.isSaved(original)){
+   const idx=selected.indexOf(original);
+   if(idx>=0)selected[idx]=exportClip();
+  }
+ }
+ return selected;
+}
 async function exportGLB() {
-  if (!state.root || state.busy) return;
+  if (!state.root || state.busy || !ensureSavedAnimationSet()) return;
   stopTailWag();
   if (state.rigGuide && !state.rigBound){
     alertUser('Кости ещё НЕ привязаны. Нажми «Привязать модель к скелету»!');
@@ -1362,13 +1386,9 @@ async function exportGLB() {
   let moved=false;
   try{
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-    const sourceClips = state.sourceClips.slice();
-    if (state.bones.length && (state.timeline.count || state.sourceIndex>=0)) {
-      const edited = exportClip();
-      if (state.sourceIndex < 0) sourceClips.push(edited);
-      else sourceClips[state.sourceIndex] = edited;
-    }
-    const clips = sourceClips.filter(c => c.tracks.length);
+    // Export ONLY clips confirmed in 'Save selected in set'.
+    // Unchecked imports remain available for preview but never leak into GLB.
+    const clips=selectedAnimationClipsForExport();
     // The fitted guide lives outside the model root, so geometry-only
     // exports never pretend to contain a skinned Mixamo character.
     // Geometry-only models have no joint keys, but are valid GLB exports.
@@ -1415,7 +1435,7 @@ async function exportGLB() {
 
 
 async function exportFBX() {
-  if(!state.root || state.busy)return;
+  if(!state.root || state.busy || !ensureSavedAnimationSet())return;
   stopTailWag();
   if(state.rigGuide && !state.rigBound){
     alertUser('Сначала привяжи модель к скелету в AutoSkin — иначе кости не будут управлять телом.');
@@ -1434,13 +1454,8 @@ async function exportFBX() {
   $('save-info').textContent='Подготавливаем FBX 7.4 (2014/2015). Это может занять время…';
   try{
     await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
-    const clips=state.sourceClips.slice();
-    if(state.bones.length && (state.timeline.count||state.sourceIndex>=0)){
-      const edited=exportClip();
-      if(state.sourceIndex<0)clips.push(edited);
-      else clips[state.sourceIndex]=edited;
-    }
-    const bytes=await exportFbxBinary(state.root,clips.filter(c=>c?.tracks?.length));
+    const clips=selectedAnimationClipsForExport();
+    const bytes=await exportFbxBinary(state.root,clips);
     const name=(state.modelName||'character').replace(/\.[^.]+$/,'')
       .replace(/[^\p{L}\p{N}_-]+/gu,'_').slice(0,55)+
       (state.bones.length?'_rigged.fbx':'_model.fbx');
