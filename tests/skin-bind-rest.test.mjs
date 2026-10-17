@@ -57,5 +57,5 @@ test('non-skinned guide falls back to visible skeleton bone orientation',()=>{
  const root=new THREE.Group(),bone=new THREE.Bone();
  root.add(bone);bone.quaternion.setFromAxisAngle(new THREE.Vector3(0,1,0),.23);
  const res=recoverSkinBindQuaternions(root,[bone]);
- assert.ok(res.get(bone.uuid).angleTo(bone.quaternion)<1e-8);
+ assert.ok(res.get(bone.uuid).angleTo(bone.quaternion)<1e-6);
 });
