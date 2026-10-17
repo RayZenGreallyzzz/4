@@ -13,6 +13,7 @@ import { tailPoseQuaternion, tailWagQuaternion, tailWagFrames } from './tailpose
 import { exportFbxBinary, countVertices } from './fbx.js';
 import { importAnimationBatch } from './animationbatch.js';
 import {appendActionClip} from './action-library.js';
+import {AnimationSelection} from './animation-selection.js';
 import { fitGuideToGeometry } from './bodyfit.js';
 import { boneLabel, boneNameKey, boneMatchesSearch } from './bone-locale.js';
 import {readModelPlacement,setModelPlacement,resetModelPlacement} from './model-placement.js';
@@ -80,6 +81,7 @@ scene.add(grid);
 const state = {
   root: null, modelName: null, bones: [], lookup: new Map(), bind: new Map(),
   sourceClips: [], sourceIndex: -1, mixer: null, action: null,
+  animationSelection:new AnimationSelection(),
   timeline: new Timeline(), selected: null, skeleton: null,
   frame: 0, frames: 90, playing: false, loop: true, speed: 1,
   clipName: 'Новая анимация', clipboard: null, busy: false, loading: false,
@@ -198,7 +200,7 @@ function disposeModel() {
   }
   Object.assign(state, {
     root:null,modelName:null,bones:[],lookup:new Map(),bind:new Map(),
-    sourceClips:[],sourceIndex:-1,mixer:null,action:null,
+    sourceClips:[],sourceIndex:-1,mixer:null,action:null,animationSelection:new AnimationSelection(),
     selected:null,skeleton:null,frame:0,frames:90,clipName:'Новая анимация',rigBound:false
   });
   state.timeline.clear();
@@ -699,13 +701,16 @@ async function addAnimationFiles(files) {
       bones:state.bones,bind:state.bind,mode:$('retarget-mode').value,
       onProgress:p=>status.textContent='Обработка '+p.index+'/'+p.total+
         ': '+p.name+' · клипов '+p.loaded+' · ошибок '+p.failed,
-      onClip:(clip,outcome,fetchBlob,fileName)=>{
-        clipPreviewSources.set(clip,{fetchBlob,fileName,matched:outcome.matched,total:outcome.total});
+      onClip:(clip,outcome,fetchBlob,fileName,sourceClipIndex)=>{
+        clipPreviewSources.set(clip,{fetchBlob,fileName,sourceClipIndex,
+          matched:outcome.matched,total:outcome.total});
         let title=clip.name,serial=2;
         while(state.sourceClips.some(c=>c.name===title)){
           title=clip.name+' ('+serial+')';serial++;
         }
         clip.name=title;state.sourceClips.push(clip);
+        // Staged only: do not put imported movements into the saved GLB.
+        // The user explicitly checks and confirms movements afterwards.
       }
     });
     if(summary.loaded){
@@ -726,7 +731,7 @@ async function addAnimationFiles(files) {
       ', несовместимых клипов: '+summary.unmatched+
       (summary.partial?', частичные совпадения: '+summary.partial:'')+'.'+
       (summary.warnings.length?' '+summary.warnings.slice(0,4).join(' | '):'')+
-      ' Для постоянного хранения вместе с персонажем экспортируй GLB.';
+      ' Новые движения доступны для просмотра, но не войдут в GLB, пока ты не поставишь галочки и не нажмёшь «Сохранить выбранные в набор».';
     alertUser('Импортировано '+summary.loaded+' движений. '+summary.failed+' ошибок файлов.');
   }catch(error){
     status.textContent='Ошибка импорта: '+(error?.message||String(error));
@@ -829,9 +834,10 @@ async function importCharacter(files) {
     state.lookup = boneLookup(bones);
     state.bind = new Map(bones.map(b=>[b.uuid,b.quaternion.clone()]));
     state.sourceClips = clips;
-    for(const clip of clips)clipPreviewSources.set(clip,{
-      fileName:main.name,fetchBlob:async()=>main
-    });
+    state.animationSelection=new AnimationSelection(clips);
+    clips.forEach((clip,i)=>clipPreviewSources.set(clip,{
+      fileName:main.name,fetchBlob:async()=>main,sourceClipIndex:i
+    }));
     state.sourceIndex = clips.length ? 0 : -1;
     state.frames = clips.length ? Math.min(MAX_FRAMES,Math.max(1,Math.round(clips[0].duration*FPS))) : 90;
     state.clipName = clips[0]?.name || 'Новая анимация';
@@ -942,6 +948,27 @@ function buildClipMenu() {
   drawAnimationGallery();
 }
 
+function refreshActionSelectionUi(){
+ const clips=state.sourceClips;
+ const selection=state.animationSelection;
+ const counts=selection.counts(clips);
+ const dirty=selection.isDirty();
+ $('actions-check-all').disabled=!clips.length||state.busy;
+ $('actions-check-none').disabled=!clips.length||state.busy;
+ $('actions-save-checked').disabled=!clips.length||state.busy||!dirty;
+ $('actions-selection-status').textContent=
+  'Всего: '+counts.all+' · отмечено: '+counts.checked+
+  ' · в сохранённом наборе: '+counts.saved+
+  (dirty?' · ⚠ Галочки изменены, нажми «Сохранить выбранные в набор».':
+   counts.pending?' · '+counts.pending+' движения пока не включены в набор.':
+   ' · Выбор сохранён.');
+}
+function commitCheckedActionSet(){
+ if(state.busy||!state.root)return;
+ const saved=state.animationSelection.commit(state.sourceClips);
+ drawAnimationGallery();
+ alertUser('В набор сохранено '+saved+' анимаций. Теперь можно сохранить GLB.');
+}
 function drawAnimationGallery(){
   const list=$('animation-gallery-list');
   if(!list)return;
@@ -967,16 +994,33 @@ function drawAnimationGallery(){
     const subtitle=document.createElement('small');
     subtitle.textContent=meta?.matched!=null?'Кости '+meta.matched+'/'+meta.total
       :Math.max(.01,clip.duration).toFixed(1)+' с';
-    row.append(button,name,subtitle);
+    const check=document.createElement('input');
+    check.type='checkbox';
+    check.className='animation-gallery-checkbox';
+    check.checked=state.animationSelection.isChecked(clip);
+    check.disabled=state.busy;
+    check.title='Включить «'+clip.name+'» в выбранный набор';
+    check.setAttribute('aria-label','Включить в набор: '+clip.name);
+    check.addEventListener('click',event=>event.stopPropagation());
+    check.addEventListener('change',event=>{
+      state.animationSelection.mark(clip,event.target.checked);
+      refreshActionSelectionUi();
+      if(clipPreviewIndex===i)$('preview-clip-check').checked=event.target.checked;
+    });
+    row.append(check,button,name,subtitle);
     row.addEventListener('click',()=>showAnimationPreview(i));
     fragment.append(row);
   }
   list.append(fragment);
   $('animation-gallery-count').textContent=
     indices.length+' / '+state.sourceClips.length+' анимаций';
+  refreshActionSelectionUi();
   $('preview-add-clip').disabled=clipPreviewIndex<0||clipPreviewIndex>=state.sourceClips.length||state.busy;
   $('preview-add-clip').textContent=clipPreviewIndex===state.sourceIndex
     ? '✓ Уже выбрана':'✓ Выбрать эту анимацию';
+  const current=state.sourceClips[clipPreviewIndex];
+  $('preview-clip-check').disabled=!current||state.busy;
+  $('preview-clip-check').checked=Boolean(current&&state.animationSelection.isChecked(current));
 }
 async function showAnimationPreview(index){
   const clip=state.sourceClips[index];
@@ -1000,7 +1044,8 @@ async function showAnimationPreview(index){
     // A separate source model is loaded for the small window.
     // The main character and timeline remain untouched.
     await clipPreviewTool.load(source.fetchBlob,source.fileName||clip.name,
-      msg=>{if(clipPreviewIndex===index)note.textContent=msg;});
+      msg=>{if(clipPreviewIndex===index)note.textContent=msg;},
+      source.sourceClipIndex??0);
   }catch(error){
     note.textContent='Предпросмотр недоступен: '+(error?.message||String(error));
   }
@@ -1021,6 +1066,7 @@ function saveActionToLibrary(){
   try{
     const compiled=exportClip();
     const {clip,index}=appendActionClip(state.sourceClips,compiled);
+    state.animationSelection.addManual(clip);
     // Store the new action as a separate AnimationClip. Previous clips and
     // imported animations remain unchanged, including the edited source clip.
     state.timeline.clear();
@@ -1141,6 +1187,7 @@ function refreshControls() {
   $('delete-key').disabled = !rigged || !state.selected || !state.timeline.has(state.selected,state.frame);
   $('paste-pose').disabled = !rigged || !state.clipboard;
   $('import-animations').disabled = !rigged;
+  refreshActionSelectionUi();
   $('save-action').disabled = !rigged||!state.timeline.count;
   $('frame-number').disabled = !ready;
   for(const b of document.querySelectorAll('[data-frame-jump]')){
@@ -1773,6 +1820,21 @@ onButton('new-clip',()=>switchClip('new'));
 onButton('save-action',saveActionToLibrary);
 onButton('import-animations',()=>$('animation-files').click());
 $('animation-search').addEventListener('input',drawAnimationGallery);
+onButton('actions-check-all',()=>{
+ state.animationSelection.markAll(state.sourceClips,true);
+ drawAnimationGallery();
+});
+onButton('actions-check-none',()=>{
+ state.animationSelection.markAll(state.sourceClips,false);
+ drawAnimationGallery();
+});
+onButton('actions-save-checked',commitCheckedActionSet);
+$('preview-clip-check').addEventListener('change',event=>{
+ const clip=state.sourceClips[clipPreviewIndex];
+ if(!clip)return;
+ state.animationSelection.mark(clip,event.target.checked);
+ drawAnimationGallery();
+});
 onButton('preview-add-clip',applyPreviewClip);
 $('animation-files').addEventListener('change',event=>{
   const files=[...(event.target.files||[])];event.target.value='';
