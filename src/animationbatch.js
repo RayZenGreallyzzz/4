@@ -93,7 +93,7 @@ export async function importAnimationBatch(files,{
           report.warnings.push(source.name+': не совпали кости');
           continue;
         }
-        onClip(outcome.clip,outcome,source.fetchBlob,source.name);
+        onClip(outcome.clip,outcome,source.fetchBlob,source.name,clipIndex);
         report.loaded++;
         if(outcome.matched===outcome.total)report.full++;
         if(outcome.matched>report.bestMatched){

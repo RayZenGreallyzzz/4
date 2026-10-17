@@ -51,7 +51,7 @@ export class AnimationPreview {
     this.model=null;
     this.scene=null;
   }
-  async load(fetchBlob,filename,onState=()=>{}){
+  async load(fetchBlob,filename,onState=()=>{},clipIndex=0){
     this.clear();
     const request=this.generation;
     onState('Загружаем предпросмотр…');
@@ -99,7 +99,9 @@ export class AnimationPreview {
       this.camera.updateProjectionMatrix();
       this.mixer=new THREE.AnimationMixer(model);
       if(animations.length){
-        this.mixer.clipAction(animations[0]).reset().play();
+        const index=Number.isInteger(clipIndex)&&clipIndex>=0&&clipIndex<animations.length
+          ?clipIndex:0;
+        this.mixer.clipAction(animations[index]).reset().play();
       }else onState('Нет анимации: показываем статичную модель.');
       this.clock=0;
       this.active=true;
