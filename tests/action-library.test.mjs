@@ -48,8 +48,8 @@ test('app has save action button and retains all actions when exporting a GLB',(
  assert.ok(html.includes('id="save-action"'));
  assert.ok(main.includes('appendActionClip(state.sourceClips,compiled)'));
  assert.ok(main.includes('state.timeline.clear();'));
- assert.ok(main.includes('const sourceClips = state.sourceClips.slice();'));
- assert.ok(main.includes('const clips = sourceClips.filter(c => c.tracks.length);'));
+ assert.ok(main.includes('state.animationSelection.selected(state.sourceClips)'));
+ assert.ok(main.includes('const clips=selectedAnimationClipsForExport();'));
  assert.ok(main.includes("onButton('save-action',saveActionToLibrary)"));
 });
 test('cannot append zero-track placeholder to a real animated character',()=>{
