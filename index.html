@@ -110,6 +110,12 @@
           </div>
           <input id="animation-search" type="search" class="full-width"
             placeholder="⌕ Найти: бег, удар, стойка…" aria-label="Поиск анимаций"/>
+          <div class="animation-selection-actions">
+            <button type="button" id="actions-check-all" class="button outline" disabled>✓ Отметить все</button>
+            <button type="button" id="actions-check-none" class="button outline" disabled>□ Снять галочки</button>
+            <button type="button" id="actions-save-checked" class="button cyan" disabled>✓ СОХРАНИТЬ ВЫБРАННЫЕ В НАБОР</button>
+          </div>
+          <p id="actions-selection-status" class="hint" aria-live="polite">Сначала загрузи персонажа. После импорта отметь нужные движения галочками, затем сохрани выбранный набор.</p>
           <div class="animation-gallery-layout">
             <div id="animation-gallery-list" class="animation-gallery-list"
               aria-label="Список анимаций"></div>
@@ -121,11 +127,12 @@
               <p id="preview-animation-status" class="hint">
                 Здесь проигрывается выбранное движение на маленьком 3D-манекене.
               </p>
+              <label class="animation-preview-check"><input type="checkbox" id="preview-clip-check" disabled/> ✓ Включить эту анимацию в набор</label>
               <button type="button" id="preview-add-clip" class="button cyan"
                 disabled>✓ Выбрать эту анимацию</button>
             </div>
           </div>
-          <p class="hint">Окошко предпросмотра не изменяет текущую позу персонажа. Для работы на планшете показывается только один 3D-просмотр одновременно.</p>
+          <p class="hint">Импортированные движения сначала попадают в галерею, но НЕ добавляются в итоговый GLB автоматически. Просмотри, отметь галочками только нужные, нажми «Сохранить выбранные в набор». После этого «Сохранить GLB» экспортирует только утверждённые действия. Для файла с большим количеством анимаций можно сначала нажать «Снять галочки».</p>
         </div>
       </section>
       <section class="panel autorig-panel">
