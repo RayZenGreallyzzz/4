@@ -166,3 +166,14 @@
 .placement-actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);align-items:end;gap:8px}
 .placement-actions button{white-space:normal;min-height:34px;font-size:10px}
 @media(max-width:660px){.viewport-toolbar{top:41px;right:6px;padding:6px;max-width:215px}.model-mode{font-size:9px;min-height:30px}.model-placement-panel{padding:11px}.placement-grid{gap:5px}}
+
+/* Selection is deliberate: preview/list checked movements are not exported
+   until pressing "Сохранить выбранные в набор". */
+.animation-selection-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:8px 0}
+.animation-selection-actions #actions-save-checked{grid-column:1/-1;min-height:40px;white-space:normal}
+.animation-selection-actions .button{white-space:normal;font-size:10px;min-height:34px}
+.animation-gallery-item{position:relative}
+.animation-gallery-checkbox{flex:0 0 20px;width:20px;height:20px;accent-color:#20e8f1;cursor:pointer;touch-action:manipulation;margin:0 4px 0 0}
+.animation-preview-check{display:flex;align-items:center;gap:7px;margin:12px 0;font-size:11px;color:#b7edff;line-height:1.4}
+.animation-preview-check input{accent-color:#24ebf0;width:19px;height:19px;flex:none}
+@media(max-width:660px){.animation-gallery-checkbox{min-width:22px;min-height:22px}.animation-selection-actions{gap:5px}}
