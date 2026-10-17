@@ -149,3 +149,20 @@
 .joint-shortcuts button{min-height:37px;padding:7px 4px;font-size:11px;color:#def8ff;background:#15354a;border:1px solid #39829b;border-radius:7px}
 .joint-shortcuts button.active{background:#126176;border-color:#56ebf7;color:#fff}
 .joint-shortcuts button:disabled{opacity:.45}
+
+/* Whole-model transform controls are separate from AutoRig and bone keyframes. */
+.viewport-toolbar{min-width:180px;max-width:min(265px,calc(100vw - 24px))}
+.viewport-options{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.model-mode-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+.model-mode{font-size:10px;line-height:1.2;min-height:32px;padding:6px 5px;color:#b7d9ed;background:#192d43;border:1px solid #3d617a;border-radius:7px;white-space:nowrap}
+.model-mode.active{color:#fff;background:#136080;border-color:#32e4f3;box-shadow:inset 0 0 0 1px #25e8ff55}
+.model-mode:disabled{opacity:.35}
+.model-placement-panel{background:#132038}
+.placement-intro{margin:0 0 9px}
+.placement-status{font-size:10px;color:#8edbd9;border-left:2px solid #36d9ea;padding-left:7px;margin:9px 0}
+.placement-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:9px 0}
+.placement-grid label,.placement-actions label{display:grid;gap:4px;font-size:10px;color:#add3ec;min-width:0}
+.placement-grid input,.placement-actions input{width:100%;min-width:0;padding:7px 4px;text-align:center}
+.placement-actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);align-items:end;gap:8px}
+.placement-actions button{white-space:normal;min-height:34px;font-size:10px}
+@media(max-width:660px){.viewport-toolbar{top:41px;right:6px;padding:6px;max-width:215px}.model-mode{font-size:9px;min-height:30px}.model-placement-panel{padding:11px}.placement-grid{gap:5px}}

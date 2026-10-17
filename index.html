@@ -19,7 +19,15 @@
       <div id="viewport">
         <div class="viewport-decor"><span>● ANIMATION STUDIO</span><span>3D-ПРОСМОТР</span></div>
         <div id="empty-view" class="empty-view"><div class="empty-symbol">◇</div><h2>Открой персонажа</h2><p>GLB, GLTF или FBX со скелетом</p><button type="button" class="button cyan" onclick="document.getElementById('model-file').click()">＋ Загрузить модель</button></div>
-        <div class="viewport-toolbar"><button id="camera-frame" class="square-tool" title="Показать всю модель">◎</button><label class="toggle-line"><input type="checkbox" id="show-bones" checked/> Кости</label><label class="toggle-line"><input type="checkbox" id="show-grid" checked/> Сетка</label></div>
+        <div class="viewport-toolbar">
+          <div class="model-mode-row" aria-label="Режим движения всей модели">
+            <button type="button" data-model-mode="view" class="model-mode active" title="Вращать камеру">◎ Обзор</button>
+            <button type="button" data-model-mode="translate" class="model-mode" title="Передвигать всю модель по осям X Y Z" disabled>↔ Сдвиг</button>
+            <button type="button" data-model-mode="rotate" class="model-mode" title="Поворачивать всю модель" disabled>⟳ Поворот</button>
+            <button type="button" data-model-mode="scale" class="model-mode" title="Масштабировать всю модель" disabled>⤢ Размер</button>
+          </div>
+          <div class="viewport-options"><button id="camera-frame" class="square-tool" title="Показать всю модель">◎</button><label class="toggle-line"><input type="checkbox" id="show-bones" checked/> Кости</label><label class="toggle-line"><input type="checkbox" id="show-grid" checked/> Сетка</label></div>
+        </div>
         <div class="viewport-footer"><span>◈ Вращение: 1 палец</span><span>◆ Масштаб: 2 пальца</span></div>
       </div>
 
@@ -45,6 +53,25 @@
 
     <aside class="sidebar">
       <div class="editor-label"><strong>РЕДАКТОР АНИМАЦИЙ</strong><span id="status">● ГОТОВО</span></div>
+      <section class="panel model-placement-panel">
+        <h3><span class="badge-number">◈</span> Положение всей модели</h3>
+        <p class="hint placement-intro">Перемещай и поворачивай весь персонаж вместе со скелетом, не меняя ключевые кадры анимации. Выбери «Сдвиг», «Поворот» или «Размер» над 3D-окном.</p>
+        <p id="model-placement-status" class="placement-status">Сначала загрузи модель.</p>
+        <div class="placement-grid">
+          <label>X <input type="number" data-place-position="x" step="0.1" value="0" disabled/></label>
+          <label>Y <input type="number" data-place-position="y" step="0.1" value="0" disabled/></label>
+          <label>Z <input type="number" data-place-position="z" step="0.1" value="0" disabled/></label>
+        </div>
+        <div class="placement-grid">
+          <label>Поворот X° <input type="number" data-place-rotation="x" step="1" value="0" disabled/></label>
+          <label>Поворот Y° <input type="number" data-place-rotation="y" step="1" value="0" disabled/></label>
+          <label>Поворот Z° <input type="number" data-place-rotation="z" step="1" value="0" disabled/></label>
+        </div>
+        <div class="placement-actions">
+          <label>Размер, % <input id="model-scale-percent" type="number" min="1" max="10000" step="5" value="100" disabled/></label>
+          <button id="model-placement-reset" type="button" class="button outline" disabled>↺ Сброс положения</button>
+        </div>
+      </section>
       <section class="panel">
         <h3><span class="badge-number">02</span> Проект и анимация</h3>
         <p id="rig-status" class="rig-status">Загрузи модель, чтобы определить скелет</p>
