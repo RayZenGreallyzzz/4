@@ -105,6 +105,35 @@ export function jointWorld(guide,name) {
   return bone.getWorldPosition(new THREE.Vector3());
 }
 
+
+/**
+ * Mirror a manually placed skeleton joint across the character's mid-plane.
+ * A humanoid facing +/-Z uses X as its left-right axis; one facing +/-X
+ * uses Z instead. Mirror joint POSITION, not quaternion/animation/mesh skin.
+ * This is opt-in and never overwrites intentionally asymmetric poses unless
+ * the user enables the "Зеркально" checkbox.
+ */
+export function oppositeGuideJointName(name){
+ if(typeof name!=='string'||name==='__root__')return null;
+ if(name.includes('Left'))return name.replace('Left','Right');
+ if(name.includes('Right'))return name.replace('Right','Left');
+ return null;
+}
+export function mirrorGuideJoint(guide,name){
+ if(!guide?.root||!guide.bones)return false;
+ const opposite=oppositeGuideJointName(name);
+ if(!opposite||!guide.bones.has(opposite)||!guide.bones.has(name))return false;
+ const reference=jointWorld(guide,name);
+ const pivot=jointWorld(guide,'mixamorigHips');
+ if(!reference||!pivot)return false;
+ guide.root.updateWorldMatrix(true,true);
+ const local=guide.root.worldToLocal(reference.clone());
+ const centre=guide.root.worldToLocal(pivot.clone());
+ const axis=/^x[+-]$/.test(guide.lastFit?.direction||'z+')?'z':'x';
+ local[axis]=2*centre[axis]-local[axis];
+ return moveJointWorld(guide,opposite,guide.root.localToWorld(local));
+}
+
 const customTypes = {
   tail: {base:'Tail',parent:'mixamorigHips',start:[0,-.025,-.10],end:[0,-.16,-.47]},
   earLeft: {base:'LeftEar',parent:'mixamorigHead',start:[+.06,+.015,0],end:[+.11,+.16,0]},
