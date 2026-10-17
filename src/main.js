@@ -14,6 +14,7 @@ import { exportFbxBinary, countVertices } from './fbx.js';
 import { importAnimationBatch } from './animationbatch.js';
 import { fitGuideToGeometry } from './bodyfit.js';
 import { boneLabel, boneNameKey, boneMatchesSearch } from './bone-locale.js';
+import {readModelPlacement,setModelPlacement,resetModelPlacement} from './model-placement.js';
 import './style.css';
 
 const $ = id => document.getElementById(id);
@@ -53,6 +54,18 @@ rigTransform.addEventListener('objectChange',()=>{
   syncRigMarkers();
   refreshRigFields();
 });
+// Dedicated object-level transform; no bone or keyframe is touched.
+const modelTransform=new TransformControls(camera,renderer.domElement);
+modelTransform.setSize(.82);
+scene.add(modelTransform.getHelper());
+modelTransform.getHelper().visible=false;
+modelTransform.addEventListener('dragging-changed',e=>{orbit.enabled=!e.value;});
+modelTransform.addEventListener('objectChange',()=>{
+ if(!state.root)return;
+ orbit.target.add(state.root.position.clone().sub(previousModelPosition));
+ previousModelPosition.copy(state.root.position);
+ refreshModelPlacementFields();
+});
 scene.add(new THREE.HemisphereLight(0xc8e6ff,0x1b253b,2.35));
 const sun = new THREE.DirectionalLight(0xffe7d0,3.1);
 sun.position.set(3,7,5); scene.add(sun);
@@ -85,7 +98,75 @@ const alertUser = msg => {
 const report = s => { $('status').textContent = '● ' + s; };
 const onButton = (id, fn) => $(id).addEventListener('click',fn);
 
+let modelMode='view';
+const previousModelPosition=new THREE.Vector3();
+const canMoveModel=()=>Boolean(state.root&&!state.busy&&(!state.rigGuide||state.rigBound));
+function refreshModelPlacementFields(){
+ const p=readModelPlacement(state.root);
+ for(const kind of ['position','rotation']){
+  for(const [i,axis] of ['x','y','z'].entries()){
+   const field=document.querySelector('[data-place-'+kind+'="'+axis+'"]');
+   if(document.activeElement!==field)field.value=p?String(Number(p[kind][i].toFixed(3))):'0';
+  }
+ }
+ const scale=$('model-scale-percent');
+ if(document.activeElement!==scale)scale.value=p?String(Number((p.scale*100).toFixed(2))):'100';
+}
+function refreshModelPlacement(){
+ const ready=canMoveModel();
+ if(!ready&&modelMode!=='view'){
+  modelMode='view';modelTransform.detach();modelTransform.getHelper().visible=false;
+ }
+ modelTransform.enabled=ready&&modelMode!=='view';
+ modelTransform.getHelper().visible=modelTransform.enabled;
+ for(const button of document.querySelectorAll('[data-model-mode]')){
+  const mode=button.dataset.modelMode;
+  button.disabled=mode!=='view'&&!ready;
+  button.classList.toggle('active',mode===modelMode);
+ }
+ for(const field of document.querySelectorAll('[data-place-position],[data-place-rotation]'))field.disabled=!ready;
+ $('model-scale-percent').disabled=!ready;
+ $('model-placement-reset').disabled=!ready;
+ $('model-placement-status').textContent=!state.root?'Сначала загрузи модель.'
+  :state.rigGuide&&!state.rigBound?'Закончи подгонку AutoRig перед перемещением модели.'
+  :modelMode==='view'?'Обзор камеры. Выбери Сдвиг, Поворот или Размер над моделью.'
+  :'Перемещай цветные стрелки и кольца на модели. Ключи анимации не меняются.';
+ refreshModelPlacementFields();
+}
+function setModelMode(mode){
+ if(!['view','translate','rotate','scale'].includes(mode))return;
+ if(mode!=='view'&&!canMoveModel())return;
+ modelMode=mode;
+ if(mode==='view'){modelTransform.detach();modelTransform.getHelper().visible=false;}
+ else{
+  modelTransform.attach(state.root);
+  modelTransform.setMode(mode);
+  modelTransform.setSpace(mode==='scale'?'local':'world');
+  modelTransform.getHelper().visible=true;
+  previousModelPosition.copy(state.root.position);
+ }
+ refreshModelPlacement();
+}
+function editModelPlacement(kind,axis,input){
+ if(!canMoveModel())return;
+ const p=readModelPlacement(state.root),n=Number(input);
+ if(!p||!Number.isFinite(n))return refreshModelPlacementFields();
+ const old=state.root.position.clone();
+ let accepted=false;
+ if(kind==='scale')accepted=setModelPlacement(state.root,{scale:n/100});
+ else{
+  const values=[...p[kind]];values['xyz'.indexOf(axis)]=n;
+  accepted=setModelPlacement(state.root,{[kind]:values});
+ }
+ if(!accepted)return refreshModelPlacementFields();
+ orbit.target.add(state.root.position.clone().sub(old));
+ previousModelPosition.copy(state.root.position);
+ refreshModelPlacementFields();
+}
+
+
 function disposeModel() {
+  modelMode='view';modelTransform.detach();modelTransform.getHelper().visible=false;
   clipPreviewTool?.clear();
   clipPreviewIndex=-1;
   stopTailWag();
@@ -741,6 +822,7 @@ async function importCharacter(files) {
     const hasRig = bones.length > 0;
     disposeModel();
     state.root = root;
+    previousModelPosition.copy(root.position);
     state.modelName = main.name;
     state.bones = bones;
     state.lookup = boneLookup(bones);
@@ -1038,6 +1120,7 @@ function refreshControls() {
   $('play').textContent = state.playing ? 'Ⅱ Пауза' : '▶ Играть';
   refreshRigFields();
   refreshTailEditor();
+  refreshModelPlacement();
 }
 
 function editAngle(axis, value) {
@@ -1184,8 +1267,8 @@ async function exportGLB() {
     alertUser('Кости ещё НЕ привязаны. Нажми «Привязать модель к скелету»!');
     return;
   }
-  if (state.bones.length && !state.rigBound && state.sourceIndex < 0 && !state.timeline.count)
-    return alertUser('Запиши хотя бы один ключ для новой анимации');
+  // Exporting only a model placement (no animation keys yet) is valid.
+  // A rigged GLB should be movable and savable as a static rig, too.
   state.busy=true;
   const wasPlaying=state.playing;
   state.playing=false;
@@ -1551,6 +1634,21 @@ onButton('menu-about',()=>{$('welcome-info').classList.toggle('hidden');});
 onButton('show-menu',openMenu);
 onButton('menu-dismiss',closeMenu);
 onButton('camera-frame',frameCamera);
+for(const button of document.querySelectorAll('[data-model-mode]'))
+ button.addEventListener('click',()=>setModelMode(button.dataset.modelMode));
+for(const kind of ['position','rotation'])
+ for(const axis of ['x','y','z'])
+  document.querySelector('[data-place-'+kind+'="'+axis+'"]')
+   .addEventListener('change',e=>editModelPlacement(kind,axis,e.target.value));
+$('model-scale-percent').addEventListener('change',e=>editModelPlacement('scale',null,e.target.value));
+onButton('model-placement-reset',()=>{
+ if(!canMoveModel())return;
+ resetModelPlacement(state.root);
+ previousModelPosition.copy(state.root.position);
+ frameCamera();
+ refreshModelPlacementFields();
+ alertUser('Положение всей модели сброшено. Анимации не затронуты.');
+});
 onButton('autorig-add',()=>addRigGuide(true));
 onButton('autorig-reset',()=>addRigGuide(true));
 onButton('autorig-remove',()=>{
