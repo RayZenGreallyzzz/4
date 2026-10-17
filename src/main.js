@@ -17,6 +17,7 @@ import {AnimationSelection} from './animation-selection.js';
 import { fitGuideToGeometry } from './bodyfit.js';
 import { boneLabel, boneNameKey, boneMatchesSearch } from './bone-locale.js';
 import {readModelPlacement,setModelPlacement,resetModelPlacement} from './model-placement.js';
+import {recoverSkinBindQuaternions,applySkinRestQuaternions} from './skin-bind-rest.js';
 import './style.css';
 
 const $ = id => document.getElementById(id);
@@ -546,7 +547,7 @@ async function bindFittedRig(){
     state.rigBound=true;
     state.bones=bones;
     state.lookup=boneLookup(bones);
-    state.bind=new Map(bones.map(b=>[b.uuid,b.quaternion.clone()]));
+    state.bind=recoverSkinBindQuaternions(state.root,bones);
     state.selected=bones.find(b=>/rightarm/i.test(b.name))||bones[0];
     state.timeline.clear();
     if(state.mixer)state.mixer.stopAllAction();
@@ -842,7 +843,7 @@ async function importCharacter(files) {
     state.modelName = main.name;
     state.bones = bones;
     state.lookup = boneLookup(bones);
-    state.bind = new Map(bones.map(b=>[b.uuid,b.quaternion.clone()]));
+    state.bind = recoverSkinBindQuaternions(root,bones);
     state.sourceClips = clips;
     state.animationSelection=new AnimationSelection(clips);
     clips.forEach((clip,i)=>clipPreviewSources.set(clip,{
@@ -1399,6 +1400,12 @@ async function exportGLB() {
     // Export ONLY clips confirmed in 'Save selected in set'.
     // Unchecked imports remain available for preview but never leak into GLB.
     const clips=selectedAnimationClipsForExport();
+    // Critical: never serialize the currently playing pose as the GLB's
+    // default rest rotation. Previously exported files contained animation
+    // quaternions as bone node defaults but unchanged inverse bind matrices.
+    // Reimporting them gave the retargeter a false rest pose and flipped arms.
+    applySkinRestQuaternions(state.bones,state.bind);
+    state.root.updateWorldMatrix(true,true);
     // The fitted guide lives outside the model root, so geometry-only
     // exports never pretend to contain a skinned Mixamo character.
     // Geometry-only models have no joint keys, but are valid GLB exports.
@@ -1465,6 +1472,8 @@ async function exportFBX() {
   try{
     await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
     const clips=selectedAnimationClipsForExport();
+    applySkinRestQuaternions(state.bones,state.bind);
+    state.root.updateWorldMatrix(true,true);
     const bytes=await exportFbxBinary(state.root,clips);
     const name=(state.modelName||'character').replace(/\.[^.]+$/,'')
       .replace(/[^\p{L}\p{N}_-]+/gu,'_').slice(0,55)+
