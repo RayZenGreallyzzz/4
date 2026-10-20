@@ -4,6 +4,7 @@ import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+import { ANDROID_BALANCED, describeSource, validateAndroidGlb } from './glb-optimizer.js';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { FPS, MAX_FRAMES, Timeline, boneLookup, compileClip, clampFrame } from './timeline.js';
 import { JOINTS, createGuide, jointWorld, moveJointWorld, mirrorGuideJoint, serializeFit, restoreFit, addGuideChain, removeGuideChain } from './autorig.js';
@@ -1190,7 +1191,7 @@ function refreshControls() {
   const ready = !!state.root && !state.busy;
   const rigged = ready && state.bones.length > 0;
   const hasAnimation = ready && (state.sourceIndex >= 0 || state.timeline.count > 0);
-  for(const id of ['save-glb','save-fbx','stop','to-start','to-end','step-minus','step-plus',
+  for(const id of ['save-glb','save-glb-android','save-fbx','stop','to-start','to-end','step-minus','step-plus',
     'clip-name','duration','seek']) $(id).disabled = !ready;
   for(const id of ['key-bone','key-pose','copy-pose','clear-keys'])
     $(id).disabled = !rigged;
@@ -1378,7 +1379,7 @@ function selectedAnimationClipsForExport(){
  }
  return selected;
 }
-async function exportGLB() {
+async function exportGLB(androidOptimized=false) {
   if (!state.root || state.busy || !ensureSavedAnimationSet()) return;
   stopTailWag();
   if (state.rigGuide && !state.rigBound){
@@ -1409,21 +1410,30 @@ async function exportGLB() {
     // The fitted guide lives outside the model root, so geometry-only
     // exports never pretend to contain a skinned Mixamo character.
     // Geometry-only models have no joint keys, but are valid GLB exports.
+    const sourceShape=androidOptimized?describeSource(state.root,clips):null;
     exportScene.add(state.root);moved=true;
     const glb=await new GLTFExporter().parseAsync(exportScene,{
-      binary:true,trs:true,onlyVisible:true,animations:clips
+      binary:true,trs:true,onlyVisible:true,
+      ...(androidOptimized?ANDROID_BALANCED:{}),animations:clips
     });
     assertGlb(glb);
+    const verification=androidOptimized?validateAndroidGlb(glb,sourceShape):null;
     scene.add(state.root);moved=false;
     const name=(state.modelName||'character').replace(/\.[^.]+$/,'')
       .replace(/[^\p{L}\p{N}_-]+/gu,'_').slice(0,55)+
-      (state.rigBound?'_rigged.glb':'_animation.glb');
-    $('save-info').textContent='GLB готов ('+(glb.byteLength/1048576).toFixed(1)+' МБ). Выбери папку.';
+      (androidOptimized?'_android_1024.glb':state.rigBound?'_rigged.glb':'_animation.glb');
+    $('save-info').textContent=(androidOptimized?'Проверен для Android / Godot: '+
+      verification.animations+' анимаций, '+verification.textures+' текстур до 1024px. ':'')+
+      'GLB готов ('+(glb.byteLength/1048576).toFixed(1)+' МБ). Выбери папку.';
     const result=await saveFile(glb,name,'model/gltf-binary',p=>{
       $('save-info').textContent=p===100?'Открываем выбор папки…':'Передаём GLB: '+p+'%';
     });
     if(result.saved) {
-      $('save-info').textContent=result.folder
+      if(androidOptimized){
+        $('save-info').textContent='✓ Android GLB сохранён отдельно: '+
+          verification.meshes+' мешей, '+verification.animations+' анимаций, '+
+          verification.textures+' текстур до 1024px. Перепроверь в Godot.';
+      } else $('save-info').textContent=result.folder
         ? '✓ Файл '+result.filename+' сохранён в AnimationStudio/Characters.'
         : state.rigBound
           ? 'Скелет и привязанные меши сохранены. Проверь GLB повторной загрузкой.'
@@ -1953,7 +1963,8 @@ $('show-bones').addEventListener('change',e=>{
   if(state.skeleton)state.skeleton.visible=e.target.checked;
 });
 $('show-grid').addEventListener('change',e=>grid.visible=e.target.checked);
-onButton('save-glb',exportGLB);
+onButton('save-glb',()=>exportGLB(false));
+onButton('save-glb-android',()=>exportGLB(true));
 onButton('save-fbx',exportFBX);
 onButton('tail-preview',()=>processTailWeight(false));
 onButton('tail-apply',()=>processTailWeight(true));
