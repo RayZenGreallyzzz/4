@@ -4,13 +4,13 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
   <meta name="theme-color" content="#090d1a"/>
-  <title>Animation Studio XR Stage 3</title>
+  <title>Animation Studio XR Stage 4</title>
   <link rel="icon" type="image/webp" href="/favicon.webp"/>
 </head>
 <body>
 <div id="app">
   <header class="topbar">
-    <div class="brand"><div class="brand-mark">♛</div><div><strong>ANIMATION <em>STUDIO</em></strong><small>XR ЭТАП 3 · КОСТИ И ВЕСА ГОЛОВЫ · ОФЛАЙН</small></div></div>
+    <div class="brand"><div class="brand-mark">♛</div><div><strong>ANIMATION <em>STUDIO</em></strong><small>XR ЭТАП 4 · СУСТАВЫ ВНУТРИ МОДЕЛИ · ОФЛАЙН</small></div></div>
     <div class="top-actions"><span id="file-label">Файл не выбран</span><button id="show-menu" class="toolbar-button" type="button">⌂ Меню</button><button id="toolbar-open" type="button" class="toolbar-button primary">＋ Модель</button></div>
   </header>
 
@@ -236,6 +236,24 @@
           <p class="hint">Кости цепочки появятся в списке суставов выше. Выставляй их вдоль хвоста или крыла по одной, пальцем либо координатами X/Y/Z.</p>
         </div>
 
+        <section class="limb-centering-panel">
+          <strong>◎ ЭТАП 4 · ЦЕНТР КОНЕЧНОСТЕЙ</strong>
+          <p class="hint">Программа проверяет поперечные сечения меша и корректирует кости рук и нижних частей ног. Голову, позвоночник, таз, ключицы и бёдра не трогает. Работает как до, так и после привязки весов (для готового рига экспериментально).</p>
+          <label for="limb-choice" class="field-label">Что проверять и центрировать?</label>
+          <select id="limb-choice" class="full-width" disabled>
+            <option value="all">Все руки и нижние части ног</option>
+            <option value="leftArm">Левая рука (плечо → кисть)</option>
+            <option value="rightArm">Правая рука (плечо → кисть)</option>
+            <option value="leftLeg">Левая голень → стопа → носок</option>
+            <option value="rightLeg">Правая голень → стопа → носок</option>
+          </select>
+          <div class="limb-centering-actions">
+            <button type="button" id="limb-center" class="button cyan" disabled>◎ Проверить и центрировать</button>
+            <button type="button" id="limb-undo" class="button outline" disabled>↶ Отменить</button>
+          </div>
+          <p id="limb-center-status" class="hint" aria-live="polite">Загрузи модель. Для контроля используй рентген и виды спереди/сбоку. Перед изменением готового рига сохрани резервный GLB.</p>
+          <p class="hint">Если сечение не замкнуто или рядом пересекается другая часть тела, точка остаётся на месте. Точная подгонка пальцев и когтей требует отдельных костей.</p>
+        </section>
         <section class="skin-bind-panel">
           <strong>06A · ПРИВЯЗКА СКЕЛЕТА К ТЕЛУ</strong>
           <p>Нажми после подгонки. Программа рассчитает влияние костей на вершины и позволит сгибать тело, включая хвост.</p>
