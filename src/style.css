@@ -189,3 +189,9 @@
 .rig-xray-panel input[type=checkbox]{width:19px;height:19px;flex:none;accent-color:#4be2ac}
 .rig-xray-panel p{margin:0;line-height:1.5}
 @media(max-width:660px){.rig-xray-panel{padding:9px}.viewport-options{gap:4px}#xray-toggle{min-width:78px}}
+
+/* Per-segment anatomy working planes for stage 2. */
+#autorig-plane-mode{min-height:38px;border-color:#397f86;background:#102a3e;color:#d6f7f2}
+#autorig-plane-mode:focus{outline:2px solid #45dfcf;outline-offset:2px}
+#autorig-plane-status{padding:7px 9px;border-left:2px solid #58e2c5;background:#0b2630;font-size:10px;color:#aedfd6;line-height:1.45}
+.rig-xray-panel .field-label{margin:5px 0 0;line-height:1.35}
