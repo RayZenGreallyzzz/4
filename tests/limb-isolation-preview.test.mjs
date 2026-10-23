@@ -15,7 +15,7 @@ test('test animation moves one limb without touching opposite side or head',()=>
  assert.equal(active,'Левое предплечье');
  assert.ok(rig[0].quaternion.angleTo(initial[0])>.1);
  for(const bone of rig.slice(1))assert.equal(bone.quaternion.angleTo(initial[rig.indexOf(bone)]),0);
- testRig.update(2.5);
+ for(let n=0;n<26;n++)testRig.update(.1);
  assert.equal(rig[0].quaternion.angleTo(initial[0]),0);
  testRig.stop();
  for(let i=0;i<rig.length;i++)assert.equal(rig[i].quaternion.angleTo(initial[i]),0);
