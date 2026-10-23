@@ -1391,9 +1391,6 @@ function refreshControls() {
   refreshRigFields();
   refreshTailEditor();
   refreshModelPlacement();
-  const skinned=rigged && state.root && state.root.getObjectByProperty?.('isSkinnedMesh',true);
-  // getObjectByProperty does not cover inherited booleans on all GLBs:
-  // traverse below only when a rig is present.
   let headMesh=false;
   if(rigged)state.root.traverse(o=>{if(o.isSkinnedMesh)headMesh=true;});
   const headReady=headMesh && Boolean(locateHeadRegion(state.bones,1));
