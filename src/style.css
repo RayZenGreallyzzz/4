@@ -204,3 +204,14 @@
 .joint-safe-toggle{display:flex;gap:8px;align-items:center;font-size:11px;color:#b9eee1;margin:11px 0;line-height:1.5}
 .joint-safe-toggle input{flex:none;width:20px;height:20px;accent-color:#47d8ac}
 @media(max-width:660px){.head-weight-actions{grid-template-columns:1fr 1fr}.head-weight-actions button{font-size:10px}}
+
+/* Stage 4: focused internal limb joint centering on mobile. */
+.limb-centering-panel{padding:12px;margin:12px 0;background:#103039;border:1px solid #438b97;border-radius:10px;display:grid;gap:8px}
+.limb-centering-panel>strong{font-size:12px;color:#94f1e0}
+.limb-centering-panel p{margin:0;line-height:1.48}
+.limb-centering-panel label{font-size:11px}
+#limb-choice{min-height:40px;width:100%;border:1px solid #458c99;border-radius:8px;background:#132d42;color:#e7ffff;padding:8px}
+.limb-centering-actions{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:7px}
+.limb-centering-actions button{font-size:11px;line-height:1.35;white-space:normal;min-height:42px}
+#limb-center-status{background:#102838;border-left:2px solid #5ceac2;padding:7px 9px;font-size:10px}
+@media(max-width:660px){.limb-centering-panel{padding:9px}.limb-centering-actions button{font-size:10px}}
