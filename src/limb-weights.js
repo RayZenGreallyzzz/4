@@ -26,35 +26,35 @@ function segmentDistanceSquared(p,a,b){
  return dx*dx+dy*dy+dz*dz;
 }
 const dist=(a,b)=>a.distanceTo(b);
-function groupFeatures(bones,names){
+function groupFeatures(bones,names,indices){
  const segments=[];
  for(let i=0;i<names.length;i++){
-  const bone=bones.get(names[i]);
+  const bone=bones.get(names[i].toLowerCase());
   const a=bone.getWorldPosition(new THREE.Vector3());
-  const child=i+1<names.length?bones.get(names[i+1]):null;
+  const child=i+1<names.length?bones.get(names[i+1].toLowerCase()):null;
   let b=child?.getWorldPosition(new THREE.Vector3());
   if(!b){
-    const prev=i>0?bones.get(names[i-1])?.getWorldPosition(new THREE.Vector3()):null;
+    const prev=i>0?bones.get(names[i-1].toLowerCase())?.getWorldPosition(new THREE.Vector3()):null;
     const direction=prev?a.clone().sub(prev):new THREE.Vector3(0,-1,0);
     if(direction.lengthSq()<1e-9)direction.set(0,-1,0);
     b=a.clone().add(direction.multiplyScalar(.35));
   }
-  segments.push({index:bone.userData.skinIndex,a,b});
+  segments.push({index:indices.get(bone),a,b});
  }
  return segments;
 }
 
 export function buildLimbWeightContext(boneArray,height){
  if(!Array.isArray(boneArray)||!boneArray.length)return null;
- const byName=new Map(boneArray.map((b,i)=>{
+ const boneIndices=new Map(boneArray.map((bone,i)=>[bone,i]));
+ const byName=new Map(boneArray.map(b=>{
   b.updateWorldMatrix(true,false);
-  b.userData={...b.userData,skinIndex:i};
   return [normalBoneName(b.name),b];
  }));
  const groups={};
  for(const [group,names] of Object.entries(LIMB_GROUPS)){
   if(!names.every(name=>byName.has(name.toLowerCase())))continue;
-  groups[group]=groupFeatures(byName,names);
+  groups[group]=groupFeatures(byName,names,boneIndices);
  }
  if(Object.keys(groups).length<2)return null;
  const spineNames=['Hips','Spine','Spine1','Spine2','Neck','Head'];
@@ -64,7 +64,7 @@ export function buildLimbWeightContext(boneArray,height){
  return {groups,central,h:Math.max(height||2,.01),
   order:ORDER.filter(x=>groups[x]),byName,
   parent:Object.fromEntries(Object.entries(FRONTIER).map(([k,name])=>
-   [k,byName.get(name.toLowerCase())?.userData.skinIndex??-1]))};
+   [k,boneIndices.get(byName.get(name.toLowerCase()))??-1]))};
 }
 
 function bestDistance(p,segments){
@@ -80,7 +80,7 @@ export function classifyLimbVertex(p,context,selection='all'){
  })).sort((a,b)=>a.dist-b.dist);
  if(!candidates.length)return null;
  const best=candidates[0],other=candidates[1];
- const radius=context.h*(best.name.endsWith('Arm')?.092:.075);
+ const radius=context.h*(best.name.endsWith('Arm') ? .092 : .075);
  if(best.dist>radius)return null;
  // Crossed limbs or overlapping meshes: DO NOT guess ownership.
  if(other && best.dist+context.h*.014>other.dist*.86)return null;
