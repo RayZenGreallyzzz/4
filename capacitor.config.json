@@ -1,6 +1,6 @@
 {
-  "appId": "com.rayzeng.animationstudio",
-  "appName": "Animation Studio",
+  "appId": "com.rayzeng.animationstudio.xrtest",
+  "appName": "Animation Studio XR Test",
   "webDir": "dist",
   "server": {
     "androidScheme": "https"
