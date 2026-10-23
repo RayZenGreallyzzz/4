@@ -24,6 +24,7 @@ import {RigPlaneOverlay,anatomicalJointPlane,frontalJointPlane} from './rig-plan
 import {locateHeadRegion,reinforceSkinnedHead} from './head-weights.js';
 import {rotationLimits,relativeBoneEuler,editedBoneQuaternion} from './joint-rotation.js';
 import {scanLimbJoints,limbNames} from './limb-centering.js';
+import {buildLimbWeightContext,repairLimbWeightsOnMesh,diagnoseCrossLimbWeights} from './limb-weights.js';
 import './style.css';
 
 const $ = id => document.getElementById(id);
@@ -95,6 +96,7 @@ let rigPlaneVisible = true;
 let protectedManualRotations = true;
 const headWeightUndo = new Map();
 let limbCenterUndo=null;
+let limbWeightUndo=null;
 const state = {
   root: null, modelName: null, bones: [], lookup: new Map(), bind: new Map(),
   sourceClips: [], sourceIndex: -1, mixer: null, action: null,
@@ -186,6 +188,7 @@ function editModelPlacement(kind,axis,input){
 
 
 function disposeModel() {
+  limbWeightUndo=null;
   limbCenterUndo=null;
   headWeightUndo.clear();
   // X-ray material clones must not be mistaken for original model materials.
@@ -600,6 +603,7 @@ async function bindFittedRig(){
     disposeRigGuide(true); // preserve armature now nested under the GLB model
     state.rigBound=true;
     state.bones=bones;
+    limbWeightUndo=null;
     limbCenterUndo=null;
     headWeightUndo.clear();
     state.lookup=boneLookup(bones);
@@ -853,6 +857,133 @@ function undoLimbCenter(){
   $('limb-center-status').textContent='Положения суставов восстановлены. Оригинальные веса не изменены.';
   refreshControls();
   alertUser('Центрирование конечностей отменено.');
+}
+
+async function processLimbWeights(apply=false){
+  if(!state.root||state.busy||!state.bones.length)return;
+  const selection=$('limb-choice').value;
+  const meshes=[];
+  state.root.traverse(o=>{if(o.isSkinnedMesh&&o.geometry?.getAttribute('skinIndex')&&
+    o.geometry?.getAttribute('skinWeight'))meshes.push(o);});
+  if(!meshes.length){
+    alertUser('Нужна модель, уже привязанная к скелету.');
+    return;
+  }
+  const total=meshes.reduce((n,m)=>n+m.geometry.getAttribute('position').count,0);
+  // A full undo snapshot of indices + weights needs up to 24 B/vertex.
+  // Lower cap than AutoSkin because current geometry also remains in RAM.
+  if(apply && total*24>64*1024*1024){
+    alertUser('Недостаточно памяти для безопасной отмены. Облегчи GLB.');
+    return;
+  }
+  if(apply&&!window.confirm('Пересчитать только уверенно распознанные вершины выбранных рук/голеней/стоп? Голова и корпус останутся без изменений. Сохрани резервный GLB. Продолжить?'))return;
+  state.playing=false;
+  stopTailWag();
+  const oldPose=new Map(state.bones.map(b=>[b.uuid,b.quaternion.clone()]));
+  const status=$('limb-weights-status');
+  const backups=new Map();
+  let changed=0,foreign=0,rigid=0,scanned=0,ambiguous=0;
+  state.busy=true;
+  refreshControls();
+  try{
+    applySkinRestQuaternions(state.bones,state.bind);
+    state.root.updateWorldMatrix(true,true);
+    // Prefer the bone axis span to posed bounding boxes; preserve imported
+    // models using a dynamic base only for consistent world-space distances.
+    const height=Math.max(.05,new THREE.Box3().setFromObject(state.root)
+      .getSize(new THREE.Vector3()).y);
+    const context=buildLimbWeightContext(state.bones,height);
+    if(!context)throw Error('Не найдены обе парные цепочки рук или ног в Mixamo-именовании.');
+    if(selection!=='all'&&!context.groups[selection])
+      throw Error('Нет нужной цепочки костей: '+selection);
+    for(const mesh of meshes){
+      if(apply){
+        const skinIndex=mesh.geometry.getAttribute('skinIndex');
+        const skinWeight=mesh.geometry.getAttribute('skinWeight');
+        if(skinIndex.isInterleavedBufferAttribute||skinWeight.isInterleavedBufferAttribute)
+          throw Error('Сжатые атрибуты меша нужно преобразовать перед изменением весов.');
+        backups.set(mesh.uuid,{
+          mesh,indices:skinIndex.array.slice(),weights:skinWeight.array.slice()
+        });
+        const stats=await repairLimbWeightsOnMesh(mesh,context,{
+          selection,onProgress:(progress,count)=>{
+            status.textContent='Авто-веса: '+progress.processed+' / '+count+
+              ' вершин · исправлено '+(changed+progress.changed);
+          }
+        });
+        changed+=stats.changed;
+        foreign+=stats.crossSide;
+        rigid+=stats.rigid;
+        ambiguous+=stats.unclassified;
+      }else{
+        const stats=await diagnoseCrossLimbWeights(mesh,context,{
+          selection,onProgress:(progress,count)=>{
+            status.textContent='Диагностика '+progress.scanned+' / '+count+' · чужих влияний '+(foreign+progress.foreign);
+          }
+        });
+        scanned+=stats.scanned;
+        foreign+=stats.foreign;
+        ambiguous+=stats.ambiguous;
+      }
+    }
+    if(apply){
+      if(changed){
+        // Existing head-weight undo snapshots can restore the whole skinning
+        // attributes and would roll back this independent limb correction.
+        // Invalidate those snapshots; the actual head weights are untouched.
+        headWeightUndo.clear();
+        limbWeightUndo=backups;
+        status.textContent='Исправлено: '+changed+' вершин, удалено смешанных влияний: '+
+          foreign+', жёстко закреплено концов: '+rigid+'. Пропущено: '+
+          ambiguous+'. Проверь движения по одной конечности; можно отменить.';
+        alertUser('Веса конечностей исправлены. Доступна отмена.');
+      }else{
+        status.textContent='Ничего не изменено: алгоритм не нашёл уверенных участков для безопасного пересчёта. Используй рентген и ручную правку.';
+      }
+    }else{
+      status.textContent='Проверено '+scanned+' вершин. Подозрений на чужие веса: '+foreign+
+        '. Не классифицировано/рядом с другими частями тела: '+ambiguous+
+        '. Никаких изменений пока нет.';
+    }
+  }catch(error){
+    if(apply)for(const entry of backups.values()){
+      const si=entry.mesh.geometry.getAttribute('skinIndex');
+      const sw=entry.mesh.geometry.getAttribute('skinWeight');
+      si.array.set(entry.indices);sw.array.set(entry.weights);
+      si.needsUpdate=true;sw.needsUpdate=true;
+    }
+    status.textContent='Ошибка обработки весов: '+(error?.message||String(error))+
+      '. Данные предыдущей привязки сохранены.';
+    alertUser('Ошибка AutoSkin: '+(error?.message||String(error)));
+  }finally{
+    for(const bone of state.bones){
+      const q=oldPose.get(bone.uuid);
+      if(q)bone.quaternion.copy(q);
+    }
+    state.root.updateWorldMatrix(true,true);
+    showFrame(state.frame);
+    state.busy=false;
+    refreshControls();
+  }
+}
+function undoLimbWeights(){
+  if(state.busy||!limbWeightUndo)return;
+  let restored=0;
+  for(const entry of limbWeightUndo.values()){
+    if(!entry.mesh?.geometry)continue;
+    const si=entry.mesh.geometry.getAttribute('skinIndex');
+    const sw=entry.mesh.geometry.getAttribute('skinWeight');
+    if(!si||!sw||si.array.length!==entry.indices.length||
+      sw.array.length!==entry.weights.length)continue;
+    si.array.set(entry.indices);sw.array.set(entry.weights);
+    si.needsUpdate=true;sw.needsUpdate=true;
+    restored++;
+  }
+  limbWeightUndo=null;
+  $('limb-weights-status').textContent='Прежние веса конечностей восстановлены ('+
+    restored+' мешей). Кости, позы и анимации не менялись.';
+  refreshControls();
+  alertUser('Прежние веса восстановлены.');
 }
 
 async function saveRigGuide() {
@@ -1530,6 +1661,9 @@ function refreshControls() {
   $('head-weights-fix').disabled=!headReady||state.busy;
   $('limb-center').disabled=!ready || (!state.rigGuide&&!state.bones.length);
   $('limb-undo').disabled=!limbCenterUndo||state.busy;
+  $('limb-weights-check').disabled=!rigged||!headMesh||state.busy;
+  $('limb-weights-fix').disabled=!rigged||!headMesh||state.busy;
+  $('limb-weights-undo').disabled=!limbWeightUndo||state.busy;
   $('head-weights-undo').disabled=!headWeightUndo.size||state.busy;
   $('safe-joint-angles').checked=protectedManualRotations;
 }
@@ -2127,6 +2261,9 @@ onButton('autorig-save',saveRigGuide);
 onButton('autorig-bind',bindFittedRig);
 onButton('limb-center',centerSelectedLimbs);
 onButton('limb-undo',undoLimbCenter);
+onButton('limb-weights-check',()=>processLimbWeights(false));
+onButton('limb-weights-fix',()=>processLimbWeights(true));
+onButton('limb-weights-undo',undoLimbWeights);
 onButton('autorig-load-file',()=>$('fit-file').click());
 onButton('autorig-recover',()=>{
   try{
