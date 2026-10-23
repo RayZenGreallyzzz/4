@@ -4,13 +4,13 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
   <meta name="theme-color" content="#090d1a"/>
-  <title>Animation Studio XR Stage 4</title>
+  <title>Animation Studio XR Stage 5</title>
   <link rel="icon" type="image/webp" href="/favicon.webp"/>
 </head>
 <body>
 <div id="app">
   <header class="topbar">
-    <div class="brand"><div class="brand-mark">♛</div><div><strong>ANIMATION <em>STUDIO</em></strong><small>XR ЭТАП 4 · СУСТАВЫ ВНУТРИ МОДЕЛИ · ОФЛАЙН</small></div></div>
+    <div class="brand"><div class="brand-mark">♛</div><div><strong>ANIMATION <em>STUDIO</em></strong><small>XR ЭТАП 5 · ЧИСТЫЕ ВЕСА КОНЕЧНОСТЕЙ · ОФЛАЙН</small></div></div>
     <div class="top-actions"><span id="file-label">Файл не выбран</span><button id="show-menu" class="toolbar-button" type="button">⌂ Меню</button><button id="toolbar-open" type="button" class="toolbar-button primary">＋ Модель</button></div>
   </header>
 
@@ -253,6 +253,17 @@
           </div>
           <p id="limb-center-status" class="hint" aria-live="polite">Загрузи модель. Для контроля используй рентген и виды спереди/сбоку. Перед изменением готового рига сохрани резервный GLB.</p>
           <p class="hint">Если сечение не замкнуто или рядом пересекается другая часть тела, точка остаётся на месте. Точная подгонка пальцев и когтей требует отдельных костей.</p>
+          <div class="limb-weights-stage5">
+            <strong>◎ ЭТАП 5 · ИЗОЛЯЦИЯ ВЕСОВ РУК И НОГ</strong>
+            <p class="hint">Для персонажа с уже привязанным скелетом. Сначала проверь смешивание весов, затем пересчитай только уверенно определённые участки выбранной конечности. Голова, позвоночник и корпус не пересчитываются.</p>
+            <div class="limb-centering-actions">
+              <button id="limb-weights-check" type="button" class="button outline" disabled>◎ Проверить чужие веса</button>
+              <button id="limb-weights-fix" type="button" class="button cyan" disabled>✓ Исправить веса</button>
+            </div>
+            <button id="limb-weights-undo" type="button" class="button outline full-width" disabled>↶ Отменить исправление весов</button>
+            <p id="limb-weights-status" class="hint" aria-live="polite">Выбери слева/справа конечность, загрузи GLB с уже привязанным скелетом. Сначала сохрани резервный GLB.</p>
+            <p class="hint">Пересчёт пропускает сомнительные вершины и пересекающиеся конечности. Если когти имеют собственные кости, их нужно настраивать отдельно.</p>
+          </div>
         </section>
         <section class="skin-bind-panel">
           <strong>06A · ПРИВЯЗКА СКЕЛЕТА К ТЕЛУ</strong>
