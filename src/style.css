@@ -195,3 +195,12 @@
 #autorig-plane-mode:focus{outline:2px solid #45dfcf;outline-offset:2px}
 #autorig-plane-status{padding:7px 9px;border-left:2px solid #58e2c5;background:#0b2630;font-size:10px;color:#aedfd6;line-height:1.45}
 .rig-xray-panel .field-label{margin:5px 0 0;line-height:1.35}
+
+/* Head/skull weights diagnostic repair and conservative joint guard. */
+.head-weight-panel{background:#102b35;border:1px solid #397b87}
+.head-weight-panel .hint{line-height:1.5}
+.head-weight-actions{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:7px;margin:8px 0}
+.head-weight-actions button{min-height:40px;white-space:normal;font-size:11px}
+.joint-safe-toggle{display:flex;gap:8px;align-items:center;font-size:11px;color:#b9eee1;margin:11px 0;line-height:1.5}
+.joint-safe-toggle input{flex:none;width:20px;height:20px;accent-color:#47d8ac}
+@media(max-width:660px){.head-weight-actions{grid-template-columns:1fr 1fr}.head-weight-actions button{font-size:10px}}
