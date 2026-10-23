@@ -25,6 +25,7 @@ import {locateHeadRegion,reinforceSkinnedHead} from './head-weights.js';
 import {rotationLimits,relativeBoneEuler,editedBoneQuaternion} from './joint-rotation.js';
 import {scanLimbJoints,limbNames} from './limb-centering.js';
 import {buildLimbWeightContext,repairLimbWeightsOnMesh,diagnoseCrossLimbWeights} from './limb-weights.js';
+import {LimbWeightHeatmap} from './limb-weight-heatmap.js';
 import './style.css';
 
 const $ = id => document.getElementById(id);
@@ -97,6 +98,8 @@ let protectedManualRotations = true;
 const headWeightUndo = new Map();
 let limbCenterUndo=null;
 let limbWeightUndo=null;
+const limbHeatmap=new LimbWeightHeatmap();
+let beforeHeatmapXray=false;
 const state = {
   root: null, modelName: null, bones: [], lookup: new Map(), bind: new Map(),
   sourceClips: [], sourceIndex: -1, mixer: null, action: null,
@@ -188,6 +191,7 @@ function editModelPlacement(kind,axis,input){
 
 
 function disposeModel() {
+  limbHeatmap.hide();
   limbWeightUndo=null;
   limbCenterUndo=null;
   headWeightUndo.clear();
@@ -859,6 +863,32 @@ function undoLimbCenter(){
   alertUser('Центрирование конечностей отменено.');
 }
 
+function setLimbWeightHeatmap(enabled){
+  if(!state.root)return;
+  if(!enabled){
+    limbHeatmap.hide();
+    if(beforeHeatmapXray){
+      xrayView.setEnabled(true);
+      beforeHeatmapXray=false;
+    }
+  }else{
+    if(limbHeatmap.active)limbHeatmap.hide();
+    const wasXray=xrayView.enabled;
+    if(wasXray){
+      xrayView.setEnabled(false);
+      beforeHeatmapXray=true;
+    }
+    try{
+      limbHeatmap.show(state.root,$('limb-choice').value);
+    }catch(e){
+      if(beforeHeatmapXray){xrayView.setEnabled(true);beforeHeatmapXray=false;}
+      $('limb-weights-status').textContent='Не удалось показать карту: '+(e?.message||String(e));
+      alertUser('Карта весов: '+(e?.message||String(e)));
+    }
+  }
+  $('limb-weights-map').classList.toggle('active',limbHeatmap.active);
+  $('limb-weights-map').setAttribute('aria-pressed',String(limbHeatmap.active));
+}
 async function processLimbWeights(apply=false){
   if(!state.root||state.busy||!state.bones.length)return;
   const selection=$('limb-choice').value;
@@ -880,6 +910,8 @@ async function processLimbWeights(apply=false){
   state.playing=false;
   stopTailWag();
   const oldPose=new Map(state.bones.map(b=>[b.uuid,b.quaternion.clone()]));
+  const mapWasActive=limbHeatmap.active;
+  if(mapWasActive)setLimbWeightHeatmap(false);
   const status=$('limb-weights-status');
   const backups=new Map();
   let changed=0,foreign=0,rigid=0,scanned=0,ambiguous=0;
@@ -933,6 +965,9 @@ async function processLimbWeights(apply=false){
         // Invalidate those snapshots; the actual head weights are untouched.
         headWeightUndo.clear();
         limbWeightUndo=backups;
+        // Position undo from Stage 4 must not run after new skin weights;
+        // doing so would reintroduce old bone-to-mesh mismatches.
+        limbCenterUndo=null;
         status.textContent='Исправлено: '+changed+' вершин, удалено смешанных влияний: '+
           foreign+', жёстко закреплено концов: '+rigid+'. Пропущено: '+
           ambiguous+'. Проверь движения по одной конечности; можно отменить.';
@@ -963,6 +998,7 @@ async function processLimbWeights(apply=false){
     state.root.updateWorldMatrix(true,true);
     showFrame(state.frame);
     state.busy=false;
+    if(mapWasActive)setLimbWeightHeatmap(true);
     refreshControls();
   }
 }
@@ -980,6 +1016,7 @@ function undoLimbWeights(){
     restored++;
   }
   limbWeightUndo=null;
+  if(limbHeatmap.active)setLimbWeightHeatmap(true);
   $('limb-weights-status').textContent='Прежние веса конечностей восстановлены ('+
     restored+' мешей). Кости, позы и анимации не менялись.';
   refreshControls();
@@ -1664,6 +1701,7 @@ function refreshControls() {
   $('limb-weights-check').disabled=!rigged||!headMesh||state.busy;
   $('limb-weights-fix').disabled=!rigged||!headMesh||state.busy;
   $('limb-weights-undo').disabled=!limbWeightUndo||state.busy;
+  $('limb-weights-map').disabled=!rigged||!headMesh||state.busy;
   $('head-weights-undo').disabled=!headWeightUndo.size||state.busy;
   $('safe-joint-angles').checked=protectedManualRotations;
 }
@@ -1831,6 +1869,7 @@ function selectedAnimationClipsForExport(){
 }
 async function exportGLB() {
   if (!state.root || state.busy || !ensureSavedAnimationSet()) return;
+  if(limbHeatmap.active)setLimbWeightHeatmap(false);
   stopTailWag();
   if (state.rigGuide && !state.rigBound){
     alertUser('Кости ещё НЕ привязаны. Нажми «Привязать модель к скелету»!');
@@ -1907,6 +1946,7 @@ async function exportGLB() {
 
 async function exportFBX() {
   if(!state.root || state.busy || !ensureSavedAnimationSet())return;
+  if(limbHeatmap.active)setLimbWeightHeatmap(false);
   stopTailWag();
   if(state.rigGuide && !state.rigBound){
     alertUser('Сначала привяжи модель к скелету в AutoSkin — иначе кости не будут управлять телом.');
@@ -2264,6 +2304,10 @@ onButton('limb-undo',undoLimbCenter);
 onButton('limb-weights-check',()=>processLimbWeights(false));
 onButton('limb-weights-fix',()=>processLimbWeights(true));
 onButton('limb-weights-undo',undoLimbWeights);
+onButton('limb-weights-map',()=>setLimbWeightHeatmap(!limbHeatmap.active));
+$('limb-choice').addEventListener('change',()=>{
+  if(limbHeatmap.active)setLimbWeightHeatmap(true);
+});
 onButton('autorig-load-file',()=>$('fit-file').click());
 onButton('autorig-recover',()=>{
   try{
