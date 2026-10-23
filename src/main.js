@@ -20,6 +20,7 @@ import {readModelPlacement,setModelPlacement,resetModelPlacement} from './model-
 import {recoverSkinBindQuaternions,applySkinRestQuaternions} from './skin-bind-rest.js';
 import {XRayView} from './xray-view.js';
 import {chooseJointSnapPoint,preserveJointDepth} from './rig-depth.js';
+import {RigPlaneOverlay,anatomicalJointPlane,frontalJointPlane} from './rig-planes.js';
 import './style.css';
 
 const $ = id => document.getElementById(id);
@@ -84,7 +85,10 @@ grid.material.opacity = .3;
 scene.add(grid);
 
 const xrayView = new XRayView();
+const rigPlaneOverlay = new RigPlaneOverlay(scene);
 let rigDepthLocked = true;
+let rigPlaneMode = 'anatomy';
+let rigPlaneVisible = true;
 const state = {
   root: null, modelName: null, bones: [], lookup: new Map(), bind: new Map(),
   sourceClips: [], sourceIndex: -1, mixer: null, action: null,
@@ -237,6 +241,7 @@ function disposeRigGuide(keepRoot=false) {
     if(!keepRoot)state.rigGuide.root.removeFromParent();
     state.rigGuide=null;
   }
+  rigPlaneOverlay.update(null,null,'z+',false);
   updateChainMenu();
 }
 
@@ -254,6 +259,10 @@ function refreshRigFields() {
   $('autorig-snap').disabled=!has || state.busy;
   $('autorig-depth-lock').disabled=!has || state.busy;
   $('autorig-depth-lock').checked=rigDepthLocked;
+  $('autorig-plane-mode').disabled=!has || state.busy;
+  $('autorig-plane-mode').value=rigPlaneMode;
+  $('autorig-plane-visible').disabled=!has;
+  $('autorig-plane-visible').checked=rigPlaneVisible;
   $('xray-toggle').disabled=!state.root;
   $('xray-opacity').disabled=!state.root;
   $('xray-toggle').classList.toggle('xray-active',xrayView.enabled);
@@ -312,6 +321,24 @@ function refreshRigFields() {
     : 'Режим стрелок: двигай оси выбранного сустава. Выбор сустава — в списке.';
 }
 
+function syncAnatomicalPlane(){
+  const guide=state.rigGuide;
+  const enabled=Boolean(guide&&state.rigEnabled&&rigDepthLocked&&
+    rigPlaneVisible&&rigPlaneMode!=='camera');
+  const direction=guide?.lastFit?.direction||$('autorig-direction').value||'z+';
+  const plane=rigPlaneOverlay.update(guide,state.rigSelected,direction,
+    enabled,rigPlaneMode);
+  $('autorig-plane-status').textContent=!guide
+    ?'Сначала загрузи модель и добавь скелет.'
+    :!rigDepthLocked||rigPlaneMode==='camera'
+      ?'Свободное перемещение по экрану; глубину проверяй в рентгене или через X/Y/Z.'
+      :plane
+        ?plane.label+' · '+(rigPlaneMode==='body'
+          ?'фиксированная глубина модели'
+          :plane.estimated?'плоскость учитывает изгиб конечности':'ориентация по анатомическому шаблону')+
+          '. Видна только выбранная рабочая плоскость.'
+        :'Выбери конкретный сустав.';
+}
 function syncRigMarkers() {
   if(!state.rigGuide)return;
   state.rigGuide.root.updateWorldMatrix(true,true);
@@ -326,6 +353,7 @@ function syncRigMarkers() {
   if(state.rigVisual)state.rigVisual.visible=state.rigEnabled;
   rigTransform.enabled=state.rigEnabled && state.rigEditMode==='arrows';
   rigTransform.getHelper().visible=rigTransform.enabled && Boolean(rigTransform.object);
+  syncAnatomicalPlane();
 }
 
 function chooseRigJoint(name) {
@@ -702,13 +730,25 @@ dom.addEventListener('pointerdown',event=>{
   if(!name)return; // empty viewport still rotates/zooms normally
   chooseRigJoint(name);
   const point=jointWorld(state.rigGuide,name);
+  const direction=state.rigGuide.lastFit?.direction||$('autorig-direction').value||'z+';
   const normal=new THREE.Vector3();
   camera.getWorldDirection(normal);
-  rigDragPlane.setFromNormalAndCoplanarPoint(normal,point);
-  const intersection=pointerRay(event.clientX,event.clientY).intersectPlane(rigDragPlane,new THREE.Vector3());
+  let constraint=rigDepthLocked?rigPlaneMode:'camera';
+  const cameraPlane=new THREE.Plane().setFromNormalAndCoplanarPoint(normal,point);
+  let proposed=constraint==='anatomy' ? anatomicalJointPlane(state.rigGuide,name,direction)?.plane
+    :constraint==='body'?frontalJointPlane(point,direction).plane : cameraPlane;
+  // A side-on camera can be parallel to the editing plane. In that case
+  // fall back to camera-plane dragging with the original model depth locked.
+  const ray=pointerRay(event.clientX,event.clientY);
+  if(!proposed || Math.abs(ray.direction.dot(proposed.normal))<.09){
+    proposed=cameraPlane;
+    if(constraint!=='camera')constraint='depth-fallback';
+  }
+  rigDragPlane.copy(proposed);
+  const intersection=ray.intersectPlane(rigDragPlane,new THREE.Vector3());
   if(!intersection)return;
-  rigDrag={id:event.pointerId,name,offset:point.clone().sub(intersection),original:point.clone(),
-    facing:state.rigGuide.lastFit?.direction||$('autorig-direction').value||'z+'};
+  rigDrag={id:event.pointerId,name,offset:point.clone().sub(intersection),
+    original:point.clone(),facing:direction,constraint};
   event.preventDefault();
   event.stopImmediatePropagation();
   orbit.enabled=false;
@@ -720,7 +760,8 @@ dom.addEventListener('pointermove',event=>{
   const intersection=pointerRay(event.clientX,event.clientY).intersectPlane(rigDragPlane,new THREE.Vector3());
   if(!intersection)return;
   let next=intersection.add(rigDrag.offset);
-  if(rigDepthLocked)next=preserveJointDepth(next,rigDrag.original,rigDrag.facing);
+  if(rigDrag.constraint==='body'||rigDrag.constraint==='depth-fallback')
+    next=preserveJointDepth(next,rigDrag.original,rigDrag.facing);
   moveFittedJoint(rigDrag.name,next);
   syncRigMarkers();
   // Avoid rebuilding full panel on every high-frequency pointer event.
@@ -1803,8 +1844,17 @@ $('xray-opacity').addEventListener('input',event=>{
 $('autorig-depth-lock').addEventListener('change',event=>{
  rigDepthLocked=event.target.checked;
  $('autorig-drag-tip').textContent=rigDepthLocked
-  ?'Глубина зафиксирована относительно модели. Отключи фиксацию для перемещения вперёд/назад.'
+  ?'Сустав движется по рабочей плоскости. Выбери анатомическую или фронтальную ниже.'
   :'Свободная глубина. Проверь точки в рентгене спереди и сбоку.';
+ syncRigMarkers();
+});
+$('autorig-plane-mode').addEventListener('change',event=>{
+ rigPlaneMode=event.target.value;
+ syncRigMarkers();
+});
+$('autorig-plane-visible').addEventListener('change',event=>{
+ rigPlaneVisible=event.target.checked;
+ syncRigMarkers();
 });
 for(const button of document.querySelectorAll('[data-model-mode]'))
  button.addEventListener('click',()=>setModelMode(button.dataset.modelMode));
