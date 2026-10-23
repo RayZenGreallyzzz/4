@@ -4,13 +4,13 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
   <meta name="theme-color" content="#090d1a"/>
-  <title>Animation Studio</title>
+  <title>Animation Studio XR Test</title>
   <link rel="icon" type="image/webp" href="/favicon.webp"/>
 </head>
 <body>
 <div id="app">
   <header class="topbar">
-    <div class="brand"><div class="brand-mark">♛</div><div><strong>ANIMATION <em>STUDIO</em></strong><small>РЕДАКТОР 3D-АНИМАЦИЙ · БЕЗ ИНТЕРНЕТА</small></div></div>
+    <div class="brand"><div class="brand-mark">♛</div><div><strong>ANIMATION <em>STUDIO</em></strong><small>XR TEST · РЕНТГЕН И СУСТАВЫ · БЕЗ ИНТЕРНЕТА</small></div></div>
     <div class="top-actions"><span id="file-label">Файл не выбран</span><button id="show-menu" class="toolbar-button" type="button">⌂ Меню</button><button id="toolbar-open" type="button" class="toolbar-button primary">＋ Модель</button></div>
   </header>
 
@@ -26,7 +26,7 @@
             <button type="button" data-model-mode="rotate" class="model-mode" title="Поворачивать всю модель" disabled>⟳ Поворот</button>
             <button type="button" data-model-mode="scale" class="model-mode" title="Масштабировать всю модель" disabled>⤢ Размер</button>
           </div>
-          <div class="viewport-options"><button id="camera-frame" class="square-tool" title="Показать всю модель">◎</button><label class="toggle-line"><input type="checkbox" id="show-bones" checked/> Кости</label><label class="toggle-line"><input type="checkbox" id="show-grid" checked/> Сетка</label></div>
+          <div class="viewport-options"><button id="camera-frame" class="square-tool" title="Показать всю модель">◎</button><label class="toggle-line"><input type="checkbox" id="show-bones" checked/> Кости</label><button id="xray-toggle" type="button" class="square-tool" disabled title="Показать скелет сквозь полупрозрачное тело">◈ Рентген</button><label class="toggle-line"><input type="checkbox" id="show-grid" checked/> Сетка</label></div>
         </div>
         <div class="viewport-footer"><span>◈ Вращение: 1 палец</span><span>◆ Масштаб: 2 пальца</span></div>
       </div>
@@ -141,7 +141,7 @@
         <button id="autorig-add" type="button" class="button cyan full-width" disabled>✦ Добавить скелет</button>
         <div class="body-fit-panel">
           <strong>◎ Анализ геометрии персонажа</strong>
-          <p>Скелет размещается по поверхности корпуса, а не по общим габаритам с волосами и одеждой. При необходимости укажи направление лица.</p>
+          <p>Базовый AutoRig оценивает геометрию корпуса. Рентген и ручная корректировка позволяют проверить реальные центры суставов. При необходимости укажи направление лица.</p>
           <label class="field-label" for="autorig-direction">Куда смотрит персонаж в координатах модели?</label>
           <select id="autorig-direction" class="full-width" disabled>
             <option value="z+" selected>Вперёд: +Z (обычно GLB)</option>
@@ -179,8 +179,16 @@
           <option value="mixamorigRightToeBase">Правый носок</option>
         </select>
         <button id="autorig-snap" type="button" class="button violet full-width rig-snap-button" disabled>◎ Поставить сустав касанием тела</button>
-        <p class="autorig-drag-tip">Выбери кость выше → «Поставить сустав касанием тела» → нажми на локоть, колено или плечо на модели. Система ставит кость чуть внутрь поверхности.</p>
+        <p class="autorig-drag-tip">Выбери кость выше → «Поставить сустав касанием тела» → нажми на локоть, колено или плечо на модели. Программа ищет середину конечности, если геометрия позволяет.</p>
         <p id="autorig-drag-tip" class="autorig-drag-tip">Коснись точки скелета и перетащи её пальцем.</p>
+        <div class="rig-xray-panel">
+          <strong>◈ РЕНТГЕН И ГЛУБИНА СУСТАВОВ · ЭТАП 1</strong>
+          <label for="xray-opacity">Видимость поверхности <span id="xray-opacity-label">28%</span></label>
+          <input id="xray-opacity" type="range" min="5" max="90" value="28" step="1" disabled/>
+          <label class="toggle-line"><input id="autorig-depth-lock" type="checkbox" checked disabled/> 🔒 Сохранять глубину при перемещении сустава пальцем</label>
+          <p id="xray-status" class="hint">Рентген позволяет видеть шарнирные точки внутри тела. Кнопка над моделью включает и отключает прозрачность.</p>
+          <p class="hint">«Поставить сустав касанием тела» ищет центр между передней и задней поверхностью той же части модели. Если пересечения неоднозначны, нужна проверка сбоку. Для движения суставов вперёд/назад выключи фиксацию глубины или введи X/Y/Z.</p>
+        </div>
         <div class="autorig-view-row">
           <button id="autorig-front" type="button" class="button outline" disabled>◉ Спереди</button>
           <button id="autorig-side" type="button" class="button outline" disabled>◉ Сбоку</button>
