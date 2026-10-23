@@ -18,6 +18,8 @@ import { fitGuideToGeometry } from './bodyfit.js';
 import { boneLabel, boneNameKey, boneMatchesSearch } from './bone-locale.js';
 import {readModelPlacement,setModelPlacement,resetModelPlacement} from './model-placement.js';
 import {recoverSkinBindQuaternions,applySkinRestQuaternions} from './skin-bind-rest.js';
+import {XRayView} from './xray-view.js';
+import {chooseJointSnapPoint,preserveJointDepth} from './rig-depth.js';
 import './style.css';
 
 const $ = id => document.getElementById(id);
@@ -81,6 +83,8 @@ grid.material.transparent = true;
 grid.material.opacity = .3;
 scene.add(grid);
 
+const xrayView = new XRayView();
+let rigDepthLocked = true;
 const state = {
   root: null, modelName: null, bones: [], lookup: new Map(), bind: new Map(),
   sourceClips: [], sourceIndex: -1, mixer: null, action: null,
@@ -172,6 +176,8 @@ function editModelPlacement(kind,axis,input){
 
 
 function disposeModel() {
+  // X-ray material clones must not be mistaken for original model materials.
+  xrayView.setRoot(null);
   modelMode='view';modelTransform.detach();modelTransform.getHelper().visible=false;
   clipPreviewTool?.clear();
   clipPreviewIndex=-1;
@@ -246,6 +252,15 @@ function refreshRigFields() {
   $('autorig-recover').disabled=!state.root || !!state.bones.length || state.busy || !hasFitBackup();
   $('autorig-load-file').disabled=!state.root || !!state.bones.length || state.busy;
   $('autorig-snap').disabled=!has || state.busy;
+  $('autorig-depth-lock').disabled=!has || state.busy;
+  $('autorig-depth-lock').checked=rigDepthLocked;
+  $('xray-toggle').disabled=!state.root;
+  $('xray-opacity').disabled=!state.root;
+  $('xray-toggle').classList.toggle('xray-active',xrayView.enabled);
+  $('xray-toggle').setAttribute('aria-pressed',String(xrayView.enabled));
+  $('xray-status').textContent=!state.root?'Загрузи модель для просмотра.':xrayView.enabled
+    ?'Рентген включён: скелет и круглые суставы видны через полупрозрачную модель.'
+    :'Рентген выключен. Нажми «◈ Рентген» над моделью для проверки глубины суставов.';
   $('autorig-snap').textContent=state.rigSnapMode
     ? '× Отменить выбор точки'
     : '◎ Поставить сустав касанием тела';
@@ -536,6 +551,8 @@ async function bindFittedRig(){
   $('autorig-bind-info').textContent='Рассчитываем веса, подожди…';
   refreshControls();
   report('ПРИВЯЗКА СКЕЛЕТА');
+  const wasXray=xrayView.enabled;
+  xrayView.setEnabled(false);
   try{
     await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
     const output=await bindRigToMeshes(state.root,state.rigGuide,{
@@ -573,6 +590,8 @@ async function bindFittedRig(){
       '. Подгонка сохранена в черновике.';
     alertUser('Ошибка привязки: '+(e?.message||String(e)));
   }finally{
+    xrayView.setRoot(state.root);
+    xrayView.setEnabled(wasXray);
     state.busy=false;
     report('ГОТОВО');
     refreshControls();
@@ -599,6 +618,7 @@ async function saveRigGuide() {
 // Tablet-first positioning: invisible camera-facing plane at joint depth.
 // Intercepts the touch before OrbitControls starts orbiting the camera.
 const rigRaycaster=new THREE.Raycaster();
+const rigBackRaycaster=new THREE.Raycaster();
 const rigPointer=new THREE.Vector2();
 const rigDragPlane=new THREE.Plane();
 let rigDrag=null;
@@ -649,16 +669,25 @@ dom.addEventListener('pointerdown',event=>{
       alertUser('На этом месте модели нет. Нажми прямо на нужную часть тела.');
       return;
     }
-    const h=state.rigGuide.height;
+    // Raycast the back surface from BEHIND the character, because normal
+    // front-facing materials often cull back faces from the first camera ray.
+    const box=new THREE.Box3().setFromObject(state.root);
+    const reach=rigRaycaster.ray.origin.distanceTo(box.getCenter(new THREE.Vector3()))+
+      box.getSize(new THREE.Vector3()).length()*2+1;
+    rigBackRaycaster.set(rigRaycaster.ray.at(reach,new THREE.Vector3()),
+      rigRaycaster.ray.direction.clone().negate());
+    rigBackRaycaster.far=reach;
+    const backs=rigBackRaycaster.intersectObjects(meshes,false);
     const part=state.rigSelected;
-    const inside=/Arm|Hand|Leg|Foot|Toe|Shoulder|Ear|Tail|Wing/i.test(part)
-      ? .025*h : .048*h;
-    const target=hits[0].point.clone().addScaledVector(rigRaycaster.ray.direction,inside);
-    if(moveFittedJoint(part,target)){
+    if(part==='__root__'){alertUser('Для установки выбери конкретный сустав, а не весь скелет.');return;}
+    const snap=chooseJointSnapPoint(hits,backs,state.rigGuide.height,part,rigRaycaster.ray.direction);
+    if(snap && moveFittedJoint(part,snap.point)){
       state.rigSnapMode=false;
       syncRigMarkers();
       refreshRigFields();
-      alertUser('Сустав установлен по поверхности тела. При необходимости уточни X/Y/Z.');
+      alertUser(snap.method==='midpoint'
+        ?'Сустав установлен между поверхностями. Проверь его в рентгене сбоку.'
+        :'Толщина неоднозначна — поставлена приблизительная глубина. Проверь сбоку и поправь X/Y/Z.');
     }
     return;
   }
@@ -678,7 +707,8 @@ dom.addEventListener('pointerdown',event=>{
   rigDragPlane.setFromNormalAndCoplanarPoint(normal,point);
   const intersection=pointerRay(event.clientX,event.clientY).intersectPlane(rigDragPlane,new THREE.Vector3());
   if(!intersection)return;
-  rigDrag={id:event.pointerId,name,offset:point.clone().sub(intersection)};
+  rigDrag={id:event.pointerId,name,offset:point.clone().sub(intersection),original:point.clone(),
+    facing:state.rigGuide.lastFit?.direction||$('autorig-direction').value||'z+'};
   event.preventDefault();
   event.stopImmediatePropagation();
   orbit.enabled=false;
@@ -689,7 +719,9 @@ dom.addEventListener('pointermove',event=>{
   event.preventDefault();event.stopImmediatePropagation();
   const intersection=pointerRay(event.clientX,event.clientY).intersectPlane(rigDragPlane,new THREE.Vector3());
   if(!intersection)return;
-  moveFittedJoint(rigDrag.name,intersection.add(rigDrag.offset));
+  let next=intersection.add(rigDrag.offset);
+  if(rigDepthLocked)next=preserveJointDepth(next,rigDrag.original,rigDrag.facing);
+  moveFittedJoint(rigDrag.name,next);
   syncRigMarkers();
   // Avoid rebuilding full panel on every high-frequency pointer event.
   for(const axis of ['x','y','z']) {
@@ -855,6 +887,7 @@ async function importCharacter(files) {
     state.selected = bones.find(b=>/right(arm|forearm|hand)/i.test(b.name)) || bones[0];
     state.mixer = clips.length ? new THREE.AnimationMixer(root) : null;
     scene.add(root);
+    xrayView.setRoot(root);
     if (hasRig) {
       state.skeleton = new THREE.SkeletonHelper(root);
       state.skeleton.visible = $('show-bones').checked;
@@ -1393,6 +1426,8 @@ async function exportGLB() {
   refreshControls();
   report('ЭКСПОРТ');
   $('save-info').textContent='Готовим анимации…';
+  const xrayBeforeExport=xrayView.enabled;
+  xrayView.setEnabled(false);
   const exportScene=new THREE.Scene();
   let moved=false;
   try{
@@ -1444,6 +1479,7 @@ async function exportGLB() {
     alertUser('Ошибка экспорта: '+(e?.message||String(e)));
   }finally{
     if(moved)scene.add(state.root);
+    xrayView.setEnabled(xrayBeforeExport);
     if(state.root)preview(state.frame);
     state.busy=false;state.playing=wasPlaying;
     report('ГОТОВО');refreshControls();
@@ -1469,6 +1505,8 @@ async function exportFBX() {
   refreshControls();
   report('СОХРАНЕНИЕ FBX');
   $('save-info').textContent='Подготавливаем FBX 7.4 (2014/2015). Это может занять время…';
+  const xrayBeforeFBX=xrayView.enabled;
+  xrayView.setEnabled(false);
   try{
     await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
     const clips=selectedAnimationClipsForExport();
@@ -1501,6 +1539,7 @@ async function exportFBX() {
     $('save-info').textContent='Ошибка экспорта FBX: '+(error?.message||String(error));
     alertUser('FBX не сохранён: '+(error?.message||String(error)));
   }finally{
+    xrayView.setEnabled(xrayBeforeFBX);
     if(state.root)preview(state.frame);
     state.busy=false;
     state.playing=wasPlaying;
@@ -1751,6 +1790,22 @@ onButton('menu-about',()=>{$('welcome-info').classList.toggle('hidden');});
 onButton('show-menu',openMenu);
 onButton('menu-dismiss',closeMenu);
 onButton('camera-frame',frameCamera);
+onButton('xray-toggle',()=>{
+ if(!state.root)return;
+ xrayView.setEnabled(!xrayView.enabled);
+ if(state.skeleton)state.skeleton.material.depthTest=!xrayView.enabled;
+ refreshRigFields();
+});
+$('xray-opacity').addEventListener('input',event=>{
+ xrayView.setOpacity(event.target.value);
+ $('xray-opacity-label').textContent=event.target.value+'%';
+});
+$('autorig-depth-lock').addEventListener('change',event=>{
+ rigDepthLocked=event.target.checked;
+ $('autorig-drag-tip').textContent=rigDepthLocked
+  ?'Глубина зафиксирована относительно модели. Отключи фиксацию для перемещения вперёд/назад.'
+  :'Свободная глубина. Проверь точки в рентгене спереди и сбоку.';
+});
 for(const button of document.querySelectorAll('[data-model-mode]'))
  button.addEventListener('click',()=>setModelMode(button.dataset.modelMode));
 for(const kind of ['position','rotation'])
