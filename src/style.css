@@ -177,3 +177,15 @@
 .animation-preview-check{display:flex;align-items:center;gap:7px;margin:12px 0;font-size:11px;color:#b7edff;line-height:1.4}
 .animation-preview-check input{accent-color:#24ebf0;width:19px;height:19px;flex:none}
 @media(max-width:660px){.animation-gallery-checkbox{min-width:22px;min-height:22px}.animation-selection-actions{gap:5px}}
+
+/* XR test tools: compact controls for narrow Android touchscreens. */
+#xray-toggle{width:auto;min-width:84px;padding:6px 8px;font-size:10px;white-space:nowrap}
+#xray-toggle.xray-active{border-color:#65ebd1;background:#155947;color:#e7fff8;box-shadow:0 0 0 1px #4de6b865 inset}
+.rig-xray-panel{margin:10px 0 12px;padding:12px;border-radius:10px;background:#112b35;border:1px solid #3f8e9b;display:grid;gap:8px}
+.rig-xray-panel strong{font-size:11px;color:#aaf6dd;letter-spacing:.2px}
+.rig-xray-panel label{font-size:11px;color:#dcf5f2;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.rig-xray-panel #xray-opacity{width:100%;accent-color:#55e2af;min-height:30px}
+.rig-xray-panel .toggle-line{justify-content:flex-start;line-height:1.35}
+.rig-xray-panel input[type=checkbox]{width:19px;height:19px;flex:none;accent-color:#4be2ac}
+.rig-xray-panel p{margin:0;line-height:1.5}
+@media(max-width:660px){.rig-xray-panel{padding:9px}.viewport-options{gap:4px}#xray-toggle{min-width:78px}}
