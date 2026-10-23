@@ -1,7 +1,7 @@
-name: Build Animation Studio XR Test APK
+name: Build Animation Studio XR Stage 2 APK
 on:
   push:
-    branches: [main, feature/xray-side-by-side-stage1]
+    branches: [main, feature/xray-side-by-side-stage1, feature/anatomical-planes-stage2]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -30,9 +30,9 @@ jobs:
         run: npx cap add android
       - name: Register native file save plugin
         run: |
-          mkdir -p android/app/src/main/java/com/rayzeng/animationstudio/xrtest
-          sed 's/package com.rayzeng.animationstudio;/package com.rayzeng.animationstudio.xrtest;/' branding/android/native/MainActivity.java > android/app/src/main/java/com/rayzeng/animationstudio/xrtest/MainActivity.java
-          sed 's/package com.rayzeng.animationstudio;/package com.rayzeng.animationstudio.xrtest;/' branding/android/native/NativeFileSaverPlugin.java > android/app/src/main/java/com/rayzeng/animationstudio/xrtest/NativeFileSaverPlugin.java
+          mkdir -p android/app/src/main/java/com/rayzeng/animationstudio/xrstage2
+          sed 's/package com.rayzeng.animationstudio;/package com.rayzeng.animationstudio.xrstage2;/' branding/android/native/MainActivity.java > android/app/src/main/java/com/rayzeng/animationstudio/xrstage2/MainActivity.java
+          sed 's/package com.rayzeng.animationstudio;/package com.rayzeng.animationstudio.xrstage2;/' branding/android/native/NativeFileSaverPlugin.java > android/app/src/main/java/com/rayzeng/animationstudio/xrstage2/NativeFileSaverPlugin.java
       - name: Apply custom neon Animation Studio launcher icon
         run: |
           # Replace Capacitor defaults on both Android 8+ adaptive and older launchers.
@@ -57,6 +57,6 @@ jobs:
           ./gradlew assembleDebug --no-daemon --stacktrace
       - uses: actions/upload-artifact@v4
         with:
-          name: Animation-Studio-XR-Test-APK
+          name: Animation-Studio-XR-Stage2-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
