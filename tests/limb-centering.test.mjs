@@ -27,9 +27,10 @@ test('centering an offset elbow inside synthetic mesh does not move bones itself
   new THREE.Vector3(-1,0,-.3),new THREE.Vector3(1,2,.3)));
  const name='mixamorigLeftForeArm',bone=guide.bones.get(name);
  const p=jointWorld(guide,name);
- const shape=new THREE.Mesh(new THREE.SphereGeometry(.10,24,16),
+ const shape=new THREE.Mesh(new THREE.CylinderGeometry(.14,.14,.32,32),
    new THREE.MeshBasicMaterial());
  shape.position.copy(p).add(new THREE.Vector3(0,0,.055));
+ shape.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),axesAtJoint(bone).tangent);
  shape.updateWorldMatrix(true,true);
  const r=centerJointInMesh(bone,[shape],2);
  assert.ok(['inside','recentered'].includes(r.status),r.reason);
