@@ -82,6 +82,15 @@ export function classifyLimbVertex(p,context,selection='all'){
  const best=candidates[0],other=candidates[1];
  const radius=context.h*(best.name.endsWith('Arm') ? .092 : .075);
  if(best.dist>radius)return null;
+ // A point behind the beginning of an upper arm or shin often belongs
+ // to the torso/hip. Don't steal nearby clothing from these stable regions.
+ const proximal=context.groups[best.name][0];
+ const along=proximal.b.clone().sub(proximal.a);
+ const len2=along.lengthSq();
+ if(len2>1e-10){
+   const t=p.clone().sub(proximal.a).dot(along)/len2;
+   if(t<-.12)return null;
+ }
  // Crossed limbs or overlapping meshes: DO NOT guess ownership.
  if(other && best.dist+context.h*.014>other.dist*.86)return null;
  // Near the chest/hips we should not seize vertices from working skin areas.
@@ -138,6 +147,7 @@ export function repairOneLimbVertex(p,oldIds,oldWeights,context,selection='all')
  if(!newWeights)return null;
  // Don't rewrite correct non-target regions except clearly distal extremities.
  const rigid=newWeights.length===1&&newWeights[0].weight===1;
+ if(protectedWeight>.8 || (!rigid&&protectedWeight>.55))return null;
  if(!rigid && wrongSide<.015 && protectedWeight>.4)return null;
  const ids=new Uint16Array(4),weights=new Float32Array(4);
  newWeights.slice(0,4).forEach((w,i)=>{ids[i]=w.id;weights[i]=w.weight});
