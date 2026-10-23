@@ -61,6 +61,6 @@ test('app offers opt-in mirror for touch drag, gizmo, XYZ and snap',async()=>{
  assert.ok(main.includes('state.rigMirror=event.target.checked'));
  assert.ok(main.includes('if(state.rigMirror)mirrorGuideJoint'));
  assert.ok(main.includes("moveFittedJoint(rigDrag.name"));
- assert.ok(main.includes("moveFittedJoint(part,target)"));
+ assert.ok(main.includes("moveFittedJoint(part,snap.point)"));
  assert.ok(main.includes("moveFittedJoint(state.rigSelected,point)"));
 });
