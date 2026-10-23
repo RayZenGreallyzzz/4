@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {locateHeadRegion,reinforceSkullVertex} from './head-weights.js';
 
 // Offline tablet AutoSkin. Work in small batches so large assets (700k+
 // vertices) do not freeze the UI. The original mesh/geometry is preserved for
@@ -97,16 +98,19 @@ function createWeightTask(geometry,matrixWorld,bones,characterHeight){
     indices:new Uint16Array(count*4),
     weights:new Float32Array(count*4),
     softness:Math.max(.0002,characterHeight*.018)**2,
+    headRegion:locateHeadRegion(bones,characterHeight),
     temp:new THREE.Vector3(),
     topIds:new Uint16Array(4),
     topStrength:new Float64Array(4)
   };
 }
 function runWeightChunk(task,begin,end){
-  const {pos,matrixWorld,segments,indices,weights,softness,temp,topIds,topStrength}=task;
+  const {pos,matrixWorld,segments,indices,weights,softness,temp,topIds,topStrength,headRegion}=task;
   for(let i=begin;i<end;i++){
     temp.fromBufferAttribute(pos,i).applyMatrix4(matrixWorld);
     setInfluences(temp,segments,softness,indices,weights,i*4,topIds,topStrength);
+    if(headRegion)reinforceSkullVertex(temp,indices,weights,i*4,headRegion.headIndex,
+      headRegion.neckIndex,headRegion.neck,headRegion.head,headRegion.height);
   }
 }
 function completeTask(task){
