@@ -782,9 +782,14 @@ async function centerSelectedLimbs(){
     });
     // Stage all positions before moving any parent bone. moveJointWorld
     // recomputes child-local positions in the new parent's reference frame.
+    const originalWorld=new Map(names.map(name=>[
+      name,bones.get(name).getWorldPosition(new THREE.Vector3())
+    ]));
     for(const name of names){
       const target=results.get(name);
-      if(target?.status==='recentered'&&moveJointWorld(guide,name,target.point))updated++;
+      const destination=target?.status==='recentered' ? target.point : originalWorld.get(name);
+      if(destination && moveJointWorld(guide,name,destination) &&
+        target?.status==='recentered')updated++;
     }
     if(bound){
       state.root.updateWorldMatrix(true,true);
@@ -825,7 +830,7 @@ async function centerSelectedLimbs(){
       showFrame(state.frame);
     }
     state.busy=false;
-    state.playing=wasPlaying&&false;
+    state.playing=false;
     refreshControls();
   }
 }
