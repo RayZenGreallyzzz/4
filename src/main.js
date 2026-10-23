@@ -23,6 +23,7 @@ import {chooseJointSnapPoint,preserveJointDepth} from './rig-depth.js';
 import {RigPlaneOverlay,anatomicalJointPlane,frontalJointPlane} from './rig-planes.js';
 import {locateHeadRegion,reinforceSkinnedHead} from './head-weights.js';
 import {rotationLimits,relativeBoneEuler,editedBoneQuaternion} from './joint-rotation.js';
+import {scanLimbJoints,limbNames} from './limb-centering.js';
 import './style.css';
 
 const $ = id => document.getElementById(id);
@@ -93,6 +94,7 @@ let rigPlaneMode = 'anatomy';
 let rigPlaneVisible = true;
 let protectedManualRotations = true;
 const headWeightUndo = new Map();
+let limbCenterUndo=null;
 const state = {
   root: null, modelName: null, bones: [], lookup: new Map(), bind: new Map(),
   sourceClips: [], sourceIndex: -1, mixer: null, action: null,
@@ -184,6 +186,7 @@ function editModelPlacement(kind,axis,input){
 
 
 function disposeModel() {
+  limbCenterUndo=null;
   headWeightUndo.clear();
   // X-ray material clones must not be mistaken for original model materials.
   xrayView.setRoot(null);
@@ -252,6 +255,7 @@ function disposeRigGuide(keepRoot=false) {
 
 function refreshRigFields() {
   const rig=state.rigGuide;
+  $('limb-choice').disabled=!(state.root&&(rig||state.bones.length))||state.busy;
   const has=Boolean(rig);
   const selected=has ? jointWorld(rig,state.rigSelected) : null;
   $('autorig-selected').value=has ? state.rigSelected : '';
@@ -596,6 +600,7 @@ async function bindFittedRig(){
     disposeRigGuide(true); // preserve armature now nested under the GLB model
     state.rigBound=true;
     state.bones=bones;
+    limbCenterUndo=null;
     headWeightUndo.clear();
     state.lookup=boneLookup(bones);
     state.bind=recoverSkinBindQuaternions(state.root,bones);
@@ -720,6 +725,129 @@ function undoBoundHeadWeights(){
   $('head-weights-status').textContent='Исходные веса головы восстановлены: '+restored+' мешей.';
   refreshControls();
   alertUser('Исправление головы отменено.');
+}
+
+async function centerSelectedLimbs(){
+  if(!state.root||state.busy||(!state.rigGuide&&!state.bones.length))return;
+  const bound=!state.rigGuide && state.bones.length>0;
+  const bones=bound?new Map(state.bones.map(b=>[b.name,b])):state.rigGuide.bones;
+  const selection=$('limb-choice').value;
+  const names=limbNames(selection).filter(name=>bones.has(name));
+  if(!names.length){
+    alertUser('У модели нет подходящих костей для этой конечности.');
+    return;
+  }
+  // Mutating the rest pose of an existing skinned mesh requires rebinding
+  // inverse matrices; it is not merely moving colourful helper markers.
+  if(bound&&!window.confirm('Это готовый риг. Мы изменим исходное положение выбранных костей и пересчитаем обратные матрицы привязки без изменения весов. Сначала сохрани резервный GLB. Продолжить?'))return;
+  const wasPlaying=state.playing;
+  state.playing=false;
+  stopTailWag();
+  state.busy=true;
+  refreshControls();
+  const status=$('limb-center-status');
+  const quaternions=new Map(state.bones.map(b=>[b.uuid,b.quaternion.clone()]));
+  let snapshot=null,updated=0;
+  try{
+    if(bound)applySkinRestQuaternions(state.bones,state.bind);
+    state.root.updateWorldMatrix(true,true);
+    const guide=bound?{
+      root:state.root,bones,
+      height:new THREE.Box3().setFromObject(state.root).getSize(new THREE.Vector3()).y
+    }:state.rigGuide;
+    const results=await scanLimbJoints(bones,state.root,selection,{
+      height:guide.height,
+      onProgress:(done,total,name,value)=>{
+        status.textContent='Сканируем '+done+'/'+total+' · '+name+
+          ' · '+(value.status==='uncertain'?'нужно уточнить':value.status==='inside'?'уже внутри':'найден центр');
+      }
+    });
+    const valid=[...results].filter(([name,v])=>v.status==='recentered'&&v.point);
+    const inside=[...results.values()].filter(v=>v.status==='inside').length;
+    const uncertain=[...results.values()].filter(v=>v.status==='uncertain').length;
+    if(!valid.length){
+      status.textContent='Не перемещено ни одной кости. Уже внутри: '+inside+
+        ', неопределённо: '+uncertain+'. Проверь рентген и положение суставов вручную.';
+      return;
+    }
+    snapshot={
+      bound,root:guide.root,bones,
+      positions:new Map([...bones].map(([name,bone])=>[name,bone.position.clone()])),
+      inverses:new Map()
+    };
+    if(bound)state.root.traverse(obj=>{
+      if(obj.isSkinnedMesh&&obj.skeleton&&!snapshot.inverses.has(obj.skeleton)){
+        snapshot.inverses.set(obj.skeleton,obj.skeleton.boneInverses.map(m=>m.clone()));
+      }
+    });
+    // Stage all positions before moving any parent bone. moveJointWorld
+    // recomputes child-local positions in the new parent's reference frame.
+    for(const name of names){
+      const target=results.get(name);
+      if(target?.status==='recentered'&&moveJointWorld(guide,name,target.point))updated++;
+    }
+    if(bound){
+      state.root.updateWorldMatrix(true,true);
+      for(const skeleton of snapshot.inverses.keys()){
+        skeleton.calculateInverses();
+        skeleton.update();
+      }
+    }else{
+      syncRigMarkers();
+      saveFitDraft();
+    }
+    limbCenterUndo=snapshot;
+    status.textContent='Центрированы: '+updated+' · уже внутри: '+inside+
+      ' · требуют ручной проверки: '+uncertain+'. Проверь движения и рентген сбоку. Можно отменить.';
+    alertUser('Центрированы '+updated+' суставов. Корпус и голова не изменены.');
+  }catch(error){
+    // Transactional restoration protects the existing rig on exceptions.
+    if(snapshot){
+      for(const [name,point] of snapshot.positions){
+        const bone=snapshot.bones.get(name);if(bone)bone.position.copy(point);
+      }
+      state.root.updateWorldMatrix(true,true);
+      for(const [skeleton,inverses] of snapshot.inverses){
+        skeleton.boneInverses=inverses;
+        skeleton.update();
+      }
+      if(!bound)syncRigMarkers();
+    }
+    status.textContent='Ошибка центрирования: '+(error?.message||String(error))+
+      '. Изменения не сохранены.';
+    alertUser('Не удалось центрировать суставы. Исходные положения восстановлены.');
+  }finally{
+    if(bound){
+      for(const bone of state.bones){
+        const q=quaternions.get(bone.uuid);if(q)bone.quaternion.copy(q);
+      }
+      state.root.updateWorldMatrix(true,true);
+      showFrame(state.frame);
+    }
+    state.busy=false;
+    state.playing=wasPlaying&&false;
+    refreshControls();
+  }
+}
+function undoLimbCenter(){
+  const snapshot=limbCenterUndo;
+  if(!snapshot||state.busy)return;
+  state.playing=false;
+  for(const [name,position] of snapshot.positions){
+    const bone=snapshot.bones.get(name);
+    if(bone)bone.position.copy(position);
+  }
+  snapshot.root.updateWorldMatrix(true,true);
+  for(const [skeleton,inverses] of snapshot.inverses){
+    skeleton.boneInverses=inverses.map(m=>m.clone());
+    skeleton.update();
+  }
+  if(!snapshot.bound){syncRigMarkers();saveFitDraft();}
+  else showFrame(state.frame);
+  limbCenterUndo=null;
+  $('limb-center-status').textContent='Положения суставов восстановлены. Оригинальные веса не изменены.';
+  refreshControls();
+  alertUser('Центрирование конечностей отменено.');
 }
 
 async function saveRigGuide() {
@@ -1395,6 +1523,8 @@ function refreshControls() {
   if(rigged)state.root.traverse(o=>{if(o.isSkinnedMesh)headMesh=true;});
   const headReady=headMesh && Boolean(locateHeadRegion(state.bones,1));
   $('head-weights-fix').disabled=!headReady||state.busy;
+  $('limb-center').disabled=!ready || (!state.rigGuide&&!state.bones.length);
+  $('limb-undo').disabled=!limbCenterUndo||state.busy;
   $('head-weights-undo').disabled=!headWeightUndo.size||state.busy;
   $('safe-joint-angles').checked=protectedManualRotations;
 }
@@ -1990,6 +2120,8 @@ onButton('autorig-remove',()=>{
 });
 onButton('autorig-save',saveRigGuide);
 onButton('autorig-bind',bindFittedRig);
+onButton('limb-center',centerSelectedLimbs);
+onButton('limb-undo',undoLimbCenter);
 onButton('autorig-load-file',()=>$('fit-file').click());
 onButton('autorig-recover',()=>{
   try{
