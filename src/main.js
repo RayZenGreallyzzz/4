@@ -26,6 +26,7 @@ import {rotationLimits,relativeBoneEuler,editedBoneQuaternion} from './joint-rot
 import {scanLimbJoints,limbNames} from './limb-centering.js';
 import {buildLimbWeightContext,repairLimbWeightsOnMesh,diagnoseCrossLimbWeights} from './limb-weights.js';
 import {LimbWeightHeatmap} from './limb-weight-heatmap.js';
+import {LimbIsolationPreview} from './limb-isolation-preview.js';
 import './style.css';
 
 const $ = id => document.getElementById(id);
@@ -100,6 +101,7 @@ let limbCenterUndo=null;
 let limbWeightUndo=null;
 const limbHeatmap=new LimbWeightHeatmap();
 let beforeHeatmapXray=false;
+const limbMotion=new LimbIsolationPreview();
 const state = {
   root: null, modelName: null, bones: [], lookup: new Map(), bind: new Map(),
   sourceClips: [], sourceIndex: -1, mixer: null, action: null,
@@ -191,6 +193,7 @@ function editModelPlacement(kind,axis,input){
 
 
 function disposeModel() {
+  limbMotion.stop();
   limbHeatmap.hide();
   limbWeightUndo=null;
   limbCenterUndo=null;
@@ -865,6 +868,14 @@ function undoLimbCenter(){
   alertUser('Центрирование конечностей отменено.');
 }
 
+function stopLimbIsolationTest(){
+  if(!limbMotion.active)return;
+  limbMotion.stop();
+  if(state.root)showFrame(state.frame);
+  $('limb-weights-status').textContent='Мини-тест завершён, исходная поза восстановлена. '+
+    'Проверь, не тянулась ли противоположная лапа.';
+  refreshControls();
+}
 function setLimbWeightHeatmap(enabled){
   if(!state.root)return;
   if(!enabled){
@@ -893,6 +904,7 @@ function setLimbWeightHeatmap(enabled){
 }
 async function processLimbWeights(apply=false){
   if(!state.root||state.busy||!state.bones.length)return;
+  if(limbMotion.active)stopLimbIsolationTest();
   const selection=$('limb-choice').value;
   const meshes=[];
   state.root.traverse(o=>{if(o.isSkinnedMesh&&o.geometry?.getAttribute('skinIndex')&&
@@ -1704,11 +1716,14 @@ function refreshControls() {
   $('limb-weights-fix').disabled=!rigged||!headMesh||state.busy;
   $('limb-weights-undo').disabled=!limbWeightUndo||state.busy;
   $('limb-weights-map').disabled=!rigged||!headMesh||state.busy;
+  $('limb-weights-motion').disabled=!rigged||!headMesh||state.busy;
+  $('limb-weights-motion').textContent=limbMotion.active?'■ Остановить проверку':'▶ Тест: руки и ноги по очереди';
   $('head-weights-undo').disabled=!headWeightUndo.size||state.busy;
   $('safe-joint-angles').checked=protectedManualRotations;
 }
 
 function editAngle(axis, value) {
+  if(limbMotion.active)stopLimbIsolationTest();
   stopTailWag();
   const bone = state.selected;
   const number = Number(value);
@@ -1871,6 +1886,7 @@ function selectedAnimationClipsForExport(){
 }
 async function exportGLB() {
   if (!state.root || state.busy || !ensureSavedAnimationSet()) return;
+  if(limbMotion.active)stopLimbIsolationTest();
   if(limbHeatmap.active)setLimbWeightHeatmap(false);
   stopTailWag();
   if (state.rigGuide && !state.rigBound){
@@ -1948,6 +1964,7 @@ async function exportGLB() {
 
 async function exportFBX() {
   if(!state.root || state.busy || !ensureSavedAnimationSet())return;
+  if(limbMotion.active)stopLimbIsolationTest();
   if(limbHeatmap.active)setLimbWeightHeatmap(false);
   stopTailWag();
   if(state.rigGuide && !state.rigBound){
@@ -2308,6 +2325,20 @@ onButton('limb-weights-check',()=>processLimbWeights(false));
 onButton('limb-weights-fix',()=>processLimbWeights(true));
 onButton('limb-weights-undo',undoLimbWeights);
 onButton('limb-weights-map',()=>setLimbWeightHeatmap(!limbHeatmap.active));
+onButton('limb-weights-motion',()=>{
+  if(limbMotion.active){stopLimbIsolationTest();return;}
+  if(!state.bones.length||state.busy)return;
+  stopTailWag();
+  state.playing=false;
+  showFrame(state.frame);
+  if(!limbMotion.start(state.bones,$('limb-choice').value)){
+    alertUser('Не найдены нужные кости для теста.');
+    return;
+  }
+  $('limb-weights-status').textContent='Тест движений без записи ключей: '+limbMotion.label+
+    '. Следи за другой рукой, лапой и корпусом.';
+  refreshControls();
+});
 $('limb-choice').addEventListener('change',()=>{
   if(limbHeatmap.active)setLimbWeightHeatmap(true);
 });
@@ -2547,6 +2578,15 @@ function animate(){
   }
   if(state.rigGuide)syncRigMarkers();
   updateTailWag(delta);
+  if(limbMotion.active){
+    const wasActive=limbMotion.active;
+    const target=limbMotion.update(delta);
+    if(!target&&wasActive){
+      showFrame(state.frame);
+      refreshControls();
+      $('limb-weights-status').textContent='Тест завершён. Ни один ключ не записан.';
+    }
+  }
   orbit.update();
   renderer.render(scene,camera);
   clipPreviewTool?.update(delta);
