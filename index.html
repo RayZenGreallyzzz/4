@@ -4,13 +4,13 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
   <meta name="theme-color" content="#090d1a"/>
-  <title>Animation Studio XR Stage 2</title>
+  <title>Animation Studio XR Stage 3</title>
   <link rel="icon" type="image/webp" href="/favicon.webp"/>
 </head>
 <body>
 <div id="app">
   <header class="topbar">
-    <div class="brand"><div class="brand-mark">♛</div><div><strong>ANIMATION <em>STUDIO</em></strong><small>XR ЭТАП 2 · АНАТОМИЧЕСКИЕ ПЛОСКОСТИ · ОФЛАЙН</small></div></div>
+    <div class="brand"><div class="brand-mark">♛</div><div><strong>ANIMATION <em>STUDIO</em></strong><small>XR ЭТАП 3 · КОСТИ И ВЕСА ГОЛОВЫ · ОФЛАЙН</small></div></div>
     <div class="top-actions"><span id="file-label">Файл не выбран</span><button id="show-menu" class="toolbar-button" type="button">⌂ Меню</button><button id="toolbar-open" type="button" class="toolbar-button primary">＋ Модель</button></div>
   </header>
 
@@ -290,6 +290,15 @@
         <p id="tail-weights-status" class="tail-weight-status">Загрузи персонажа с привязанным хвостом. Перед экспериментами сохрани исходный GLB и подгонку JSON.</p>
         <p class="hint">Если всё тело — один меш, сначала поставь небольшой радиус (3–5%) и проверь количество вершин. Если трогается броня или корпус — отмени.</p>
       </section>
+      <section class="panel head-weight-panel">
+        <h3><span class="badge-number">03Б</span> Защита лица и шеи</h3>
+        <p class="hint">Для уже привязанного персонажа. Исправляет только область черепа: лицо движется вместе с костью головы, шея остаётся переходной. Не меняет расположение остальных костей и не заменяет полную корректировку весов одежды.</p>
+        <div class="head-weight-actions">
+          <button id="head-weights-fix" class="button cyan" type="button" disabled>◎ Исправить веса головы</button>
+          <button id="head-weights-undo" class="button outline" type="button" disabled>↶ Отменить</button>
+        </div>
+        <p id="head-weights-status" class="hint">Загрузи GLB с костями Head и Neck. Сохрани резервный GLB перед изменением.</p>
+      </section>
       <section class="panel bones-panel">
         <h3><span class="badge-number">03</span> Скелет <small id="bones-count">0 / 0</small></h3>
         <p class="hint">Для сгибания выбери кость предплечья или голени после привязки скелета.</p>
@@ -310,7 +319,8 @@
           <label class="axis axis-y"><b>Y</b><input id="rotate-y" type="range" min="-180" max="180" step="1" value="0"/><input id="angle-y" type="number" min="-180" max="180" step=".1" value="0"/><small>°</small></label>
           <label class="axis axis-z"><b>Z</b><input id="rotate-z" type="range" min="-180" max="180" step="1" value="0"/><input id="angle-z" type="number" min="-180" max="180" step=".1" value="0"/><small>°</small></label>
         </div>
-        <p class="hint">Выбери локоть или колено в списке выше. Пробуй вращать X, Y, Z — какая ось сгибает сустав, зависит от модели. Изменение любого угла сразу записывает ключ в выбранный кадр.</p>
+        <label class="toggle-line joint-safe-toggle"><input type="checkbox" id="safe-joint-angles" checked/> Защита головы, шеи и позвоночника от чрезмерных ручных поворотов</label>
+        <p class="hint">Углы теперь отсчитываются от исходной позы кости (0° = исходное положение). Защитный режим ограничивает опасные повороты головы, шеи и груди; отключи для нестандартных костей. Оси X/Y/Z зависят от исходной модели. Изменение угла записывает ключ в текущий кадр.</p>
       </section>
       <section class="panel">
         <h3><span class="badge-number">05</span> Ключевые кадры</h3>
