@@ -646,6 +646,7 @@ async function bindFittedRig(){
 }
 async function fixBoundHeadWeights(){
   if(!state.root || state.busy || !state.bones.length)return;
+  if(limbHeatmap.active)setLimbWeightHeatmap(false);
   const meshes=[];
   state.root.traverse(o=>{if(o.isSkinnedMesh && o.geometry?.getAttribute('skinIndex')
     && o.geometry?.getAttribute('skinWeight'))meshes.push(o);});
@@ -737,6 +738,7 @@ function undoBoundHeadWeights(){
 
 async function centerSelectedLimbs(){
   if(!state.root||state.busy||(!state.rigGuide&&!state.bones.length))return;
+  if(limbHeatmap.active)setLimbWeightHeatmap(false);
   const bound=!state.rigGuide && state.bones.length>0;
   const bones=bound?new Map(state.bones.map(b=>[b.name,b])):state.rigGuide.bones;
   const selection=$('limb-choice').value;
@@ -2250,6 +2252,7 @@ onButton('menu-dismiss',closeMenu);
 onButton('camera-frame',frameCamera);
 onButton('xray-toggle',()=>{
  if(!state.root)return;
+ if(limbHeatmap.active)setLimbWeightHeatmap(false);
  xrayView.setEnabled(!xrayView.enabled);
  if(state.skeleton)state.skeleton.material.depthTest=!xrayView.enabled;
  refreshRigFields();
