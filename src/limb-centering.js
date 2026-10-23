@@ -76,7 +76,7 @@ export function crossSection(point,axis,meshes,radius,height){
   if(value>=0&&value<=2*radius+.001)byMesh.get(hit.object).push(value);
  }
  const proposals=[];
- for(const distances of byMesh.values()){
+ for(const [mesh,distances] of byMesh){
   distances.sort((a,b)=>a-b);
   // Coincident triangles can report duplicate hits at the same location.
   const unique=[];
@@ -89,7 +89,7 @@ export function crossSection(point,axis,meshes,radius,height){
     const midpoint=(near+far)/2;
     const offset=midpoint-radius;
     const inside=near<=radius+.00001&&far>=radius-.00001;
-    proposals.push({offset,width,inside,quality:Math.abs(offset)+(inside?0:height*.006)});
+    proposals.push({mesh,offset,width,inside,quality:Math.abs(offset)+(inside?0:height*.006)});
   }
  }
  proposals.sort((a,b)=>a.quality-b.quality);
@@ -123,7 +123,8 @@ export function centerJointInMesh(bone,meshes,height){
  // local limb after re-centering. Both transverse directions must intersect.
  const a=crossSection(p,basis.u,meshes,radius,height);
  const b=crossSection(p,basis.v,meshes,radius,height);
- if(!a?.inside||!b?.inside)return {status:'uncertain',reason:'не найдено замкнутое сечение'};
+ if(!a?.inside||!b?.inside||a.mesh!==b.mesh)
+  return {status:'uncertain',reason:'не найдено единое замкнутое сечение конечности'};
  const jump=p.distanceTo(initial);
  const maxJump=Math.min(height*.18,basis.spacing*.65);
  if(jump>maxJump)return {status:'uncertain',reason:'слишком большое смещение'};
