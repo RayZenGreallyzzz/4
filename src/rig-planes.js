@@ -111,14 +111,17 @@ export class RigPlaneOverlay {
     this.group.visible=false;
     scene.add(this.group);
   }
-  update(guide,name,direction,show=true){
-    const pose=guide&&name?anatomicalJointPlane(guide,name,direction):null;
+  update(guide,name,direction,show=true,mode='anatomy'){
+    let pose=guide&&name?anatomicalJointPlane(guide,name,direction):null;
+    if(pose && mode==='body'){
+      pose={...pose,...frontalJointPlane(pose.point,direction),label:'Плоскость глубины тела',estimated:false};
+    }
     this.group.visible=Boolean(show && pose);
     if(!this.group.visible)return pose;
     const h=Math.max(.2,guide.height||1);
     const upper=/torso/.test(pose.region),head=pose.region==='head';
-    const x=h*(upper?.38:head?.20:.22);
-    const y=h*(upper?.60:head?.30:.33);
+    const x=h*(upper ? .38 : head ? .20 : .22);
+    const y=h*(upper ? .60 : head ? .30 : .33);
     this.group.position.copy(pose.point);
     this.group.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1),pose.normal);
     this.group.scale.set(x,y,1);
