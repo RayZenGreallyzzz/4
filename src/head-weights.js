@@ -71,15 +71,34 @@ export async function reinforceSkinnedHead(mesh,region,{chunkVertices=4096,onChu
   if(!pos||!si||!sw||!bones?.length)return 0;
   const own=locateHeadRegion(bones,region.height);
   if(!own)return 0;
+  if(si.itemSize!==4||sw.itemSize!==4 || si.isInterleavedBufferAttribute||
+    sw.isInterleavedBufferAttribute)return 0;
   const map=mesh.matrixWorld;
   const temp=new THREE.Vector3();let affected=0;
+  const indexScratch=new Uint16Array(4),weightScratch=new Float32Array(4);
+  const weightGetters=['getX','getY','getZ','getW'];
   for(let start=0;start<pos.count;start+=chunkVertices){
     if(signal?.aborted)throw Error('Исправление весов отменено');
     const end=Math.min(start+chunkVertices,pos.count);
     for(let i=start;i<end;i++){
       temp.fromBufferAttribute(pos,i).applyMatrix4(map);
-      if(reinforceSkullVertex(temp,si.array,sw.array,i*4,own.headIndex,own.neckIndex,
-        own.neck,own.head,region.height))affected++;
+      let changed=false;
+      if(sw.normalized){
+        for(let k=0;k<4;k++){
+          indexScratch[k]=si[weightGetters[k]](i);
+          weightScratch[k]=sw[weightGetters[k]](i);
+        }
+        changed=reinforceSkullVertex(temp,indexScratch,weightScratch,0,
+          own.headIndex,own.neckIndex,own.neck,own.head,region.height);
+        if(changed){
+          si.setXYZW(i,...indexScratch);
+          sw.setXYZW(i,...weightScratch);
+        }
+      }else{
+        changed=reinforceSkullVertex(temp,si.array,sw.array,i*4,
+          own.headIndex,own.neckIndex,own.neck,own.head,region.height);
+      }
+      if(changed)affected++;
     }
     onChunk(end,pos.count);
     if(end<pos.count)await new Promise(resolve=>setTimeout(resolve,0));
