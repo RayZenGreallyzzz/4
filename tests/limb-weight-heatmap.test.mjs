@@ -1,0 +1,43 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import * as THREE from 'three';
+import {LimbWeightHeatmap} from '../src/limb-weight-heatmap.js';
+
+test('heatmap is display only, and originals are completely restored',()=>{
+ const root=new THREE.Group(),b=new THREE.Bone();b.name='mixamorigLeftFoot';
+ const geo=new THREE.BufferGeometry();
+ geo.setAttribute('position',new THREE.Float32BufferAttribute([0,0,0,.1,0,0],3));
+ geo.setAttribute('skinIndex',new THREE.Uint16BufferAttribute([0,0,0,0,0,0,0,0],4));
+ geo.setAttribute('skinWeight',new THREE.Float32BufferAttribute([1,0,0,0,1,0,0,0],4));
+ const mat=new THREE.MeshStandardMaterial();
+ const mesh=new THREE.SkinnedMesh(geo,mat);
+ mesh.bind(new THREE.Skeleton([b]));
+ root.add(mesh);
+ const beforeAttributes=[...Object.keys(geo.attributes)];
+ const h=new LimbWeightHeatmap();
+ assert.equal(h.show(root,'leftLeg'),2);
+ assert.equal(h.active,true);
+ assert.equal(mesh.material.vertexColors,true);
+ assert.notEqual(mesh.geometry,geo);
+ assert.ok(mesh.geometry.getAttribute('color'));
+ assert.ok(!geo.getAttribute('color'));
+ h.hide();
+ assert.equal(mesh.geometry,geo);
+ assert.equal(mesh.material,mat);
+ assert.deepEqual(Object.keys(geo.attributes),beforeAttributes);
+ geo.dispose();mat.dispose();
+});
+test('diagnostic does not render missing limb group or alter mesh',()=>{
+ const root=new THREE.Group(),b=new THREE.Bone();b.name='mixamorigHead';
+ const geo=new THREE.BufferGeometry();
+ geo.setAttribute('position',new THREE.Float32BufferAttribute([0,0,0],3));
+ geo.setAttribute('skinIndex',new THREE.Uint16BufferAttribute([0,0,0,0],4));
+ geo.setAttribute('skinWeight',new THREE.Float32BufferAttribute([1,0,0,0],4));
+ const mat=new THREE.MeshStandardMaterial(),mesh=new THREE.SkinnedMesh(geo,mat);
+ mesh.bind(new THREE.Skeleton([b]));root.add(mesh);
+ const heat=new LimbWeightHeatmap();
+ assert.equal(heat.show(root,'rightArm'),0);
+ assert.equal(heat.active,false);
+ assert.equal(mesh.geometry,geo);
+ heat.hide();geo.dispose();mat.dispose();
+});
