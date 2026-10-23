@@ -21,6 +21,8 @@ import {recoverSkinBindQuaternions,applySkinRestQuaternions} from './skin-bind-r
 import {XRayView} from './xray-view.js';
 import {chooseJointSnapPoint,preserveJointDepth} from './rig-depth.js';
 import {RigPlaneOverlay,anatomicalJointPlane,frontalJointPlane} from './rig-planes.js';
+import {locateHeadRegion,reinforceSkinnedHead} from './head-weights.js';
+import {rotationLimits,relativeBoneEuler,editedBoneQuaternion} from './joint-rotation.js';
 import './style.css';
 
 const $ = id => document.getElementById(id);
@@ -89,6 +91,8 @@ const rigPlaneOverlay = new RigPlaneOverlay(scene);
 let rigDepthLocked = true;
 let rigPlaneMode = 'anatomy';
 let rigPlaneVisible = true;
+let protectedManualRotations = true;
+const headWeightUndo = new Map();
 const state = {
   root: null, modelName: null, bones: [], lookup: new Map(), bind: new Map(),
   sourceClips: [], sourceIndex: -1, mixer: null, action: null,
@@ -180,6 +184,7 @@ function editModelPlacement(kind,axis,input){
 
 
 function disposeModel() {
+  headWeightUndo.clear();
   // X-ray material clones must not be mistaken for original model materials.
   xrayView.setRoot(null);
   modelMode='view';modelTransform.detach();modelTransform.getHelper().visible=false;
@@ -591,6 +596,7 @@ async function bindFittedRig(){
     disposeRigGuide(true); // preserve armature now nested under the GLB model
     state.rigBound=true;
     state.bones=bones;
+    headWeightUndo.clear();
     state.lookup=boneLookup(bones);
     state.bind=recoverSkinBindQuaternions(state.root,bones);
     state.selected=bones.find(b=>/rightarm/i.test(b.name))||bones[0];
@@ -625,6 +631,97 @@ async function bindFittedRig(){
     refreshControls();
   }
 }
+async function fixBoundHeadWeights(){
+  if(!state.root || state.busy || !state.bones.length)return;
+  const meshes=[];
+  state.root.traverse(o=>{if(o.isSkinnedMesh && o.geometry?.getAttribute('skinIndex')
+    && o.geometry?.getAttribute('skinWeight'))meshes.push(o);});
+  if(!meshes.length){alertUser('Нужна уже привязанная модель с весами.');return;}
+  const region=locateHeadRegion(state.bones,1);
+  if(!region){alertUser('Не найдены совместимые Head и Neck. Исходные веса не изменены.');return;}
+  const vertices=meshes.reduce((sum,m)=>sum+m.geometry.getAttribute('position').count,0);
+  if(vertices*24>60*1024*1024){
+    alertUser('Для безопасной отмены не хватает лимита памяти. Облегчи модель.');
+    return;
+  }
+  if(!window.confirm('Пересчитать только веса черепа и лица? Текущий риг и анимации сохраняются. Рекомендуется заранее сохранить резервный GLB.'))return;
+  state.playing=false;
+  stopTailWag();
+  state.busy=true;
+  const previousPose=new Map(state.bones.map(b=>[b.uuid,b.quaternion.clone()]));
+  const backup=new Map();
+  $('head-weights-status').textContent='Проверяем веса головы…';
+  refreshControls();
+  let changed=0;
+  try{
+    applySkinRestQuaternions(state.bones,state.bind);
+    state.root.updateWorldMatrix(true,true);
+    const size=new THREE.Box3().setFromObject(state.root).getSize(new THREE.Vector3());
+    // Relative head dimensions are calibrated to the full current body;
+    // for a kneeling character this is only a starting approximation.
+    const height=Math.max(size.y,.05);
+    for(const mesh of meshes){
+      const indices=mesh.geometry.getAttribute('skinIndex');
+      const weights=mesh.geometry.getAttribute('skinWeight');
+      backup.set(mesh.uuid,{
+        mesh,indices:indices.array.slice(),weights:weights.array.slice()
+      });
+      changed+=await reinforceSkinnedHead(mesh,{height},{
+        onChunk:(done,total)=>{$('head-weights-status').textContent=
+          'Исправляем голову: '+done+' / '+total+' вершин меша';}
+      });
+    }
+    if(!changed) {
+      $('head-weights-status').textContent='Без изменений: не обнаружена уверенная область головы. Проверь расположение Head и Neck.';
+      return;
+    }
+    // Preserve the oldest pre-repair snapshot until the user accepts it.
+    for(const [id,entry] of backup)if(!headWeightUndo.has(id))headWeightUndo.set(id,entry);
+    $('head-weights-status').textContent='Исправлено '+changed+
+      ' вершин. Поверни голову на 15–30° и проверь лицо, шею и причёску. Можно отменить.';
+    alertUser('Веса головы скорректированы: '+changed+' вершин. Доступна отмена.');
+  }catch(e){
+    // On failure, undo everything processed in this invocation.
+    for(const entry of backup.values()){
+      const skinIndex=entry.mesh.geometry.getAttribute('skinIndex');
+      const skinWeight=entry.mesh.geometry.getAttribute('skinWeight');
+      skinIndex.array.set(entry.indices);skinWeight.array.set(entry.weights);
+      skinIndex.needsUpdate=true;skinWeight.needsUpdate=true;
+    }
+    $('head-weights-status').textContent='Ошибка: '+(e?.message||String(e));
+    alertUser('Не удалось исправить веса головы. Старые веса восстановлены.');
+  }finally{
+    for(const b of state.bones){
+      const q=previousPose.get(b.uuid);
+      if(q)b.quaternion.copy(q);
+    }
+    state.root.updateWorldMatrix(true,true);
+    showFrame(state.frame);
+    state.busy=false;
+    refreshControls();
+  }
+}
+
+function undoBoundHeadWeights(){
+  if(!headWeightUndo.size||state.busy)return;
+  let restored=0;
+  for(const entry of headWeightUndo.values()){
+    if(!entry.mesh?.geometry)continue;
+    const skinIndex=entry.mesh.geometry.getAttribute('skinIndex');
+    const skinWeight=entry.mesh.geometry.getAttribute('skinWeight');
+    if(!skinIndex||!skinWeight||
+      skinIndex.array.length!==entry.indices.length||
+      skinWeight.array.length!==entry.weights.length)continue;
+    skinIndex.array.set(entry.indices);skinWeight.array.set(entry.weights);
+    skinIndex.needsUpdate=true;skinWeight.needsUpdate=true;
+    restored++;
+  }
+  headWeightUndo.clear();
+  $('head-weights-status').textContent='Исходные веса головы восстановлены: '+restored+' мешей.';
+  refreshControls();
+  alertUser('Исправление головы отменено.');
+}
+
 async function saveRigGuide() {
   if(!state.rigGuide||state.busy)return;
   state.busy=true;
@@ -1229,12 +1326,17 @@ function drawBoneList() {
 function refreshAngles() {
   const bone = state.selected;
   $('bone-title').textContent = bone?boneLabel(bone.name):'Выбери кость';
-  const angle = bone ? new THREE.Euler().setFromQuaternion(bone.quaternion,'XYZ') : new THREE.Euler();
+  const angle = bone ? relativeBoneEuler(bone.quaternion,state.bind.get(bone.uuid)) : new THREE.Euler();
+  const limits = rotationLimits(bone?.name,protectedManualRotations);
   for(const axis of ['x','y','z']) {
     const number = Math.round(THREE.MathUtils.radToDeg(angle[axis])*10)/10;
     $('rotate-'+axis).disabled = !bone;
     $('angle-'+axis).disabled = !bone;
-    $('rotate-'+axis).value = String(THREE.MathUtils.clamp(number,-180,180));
+    $('rotate-'+axis).min = String(-limits[axis]);
+    $('rotate-'+axis).max = String(limits[axis]);
+    $('angle-'+axis).min = String(-limits[axis]);
+    $('angle-'+axis).max = String(limits[axis]);
+    $('rotate-'+axis).value = String(THREE.MathUtils.clamp(number,-limits[axis],limits[axis]));
     if (document.activeElement!==$('angle-'+axis)) $('angle-'+axis).value = String(number);
   }
 }
@@ -1289,6 +1391,15 @@ function refreshControls() {
   refreshRigFields();
   refreshTailEditor();
   refreshModelPlacement();
+  const skinned=rigged && state.root && state.root.getObjectByProperty?.('isSkinnedMesh',true);
+  // getObjectByProperty does not cover inherited booleans on all GLBs:
+  // traverse below only when a rig is present.
+  let headMesh=false;
+  if(rigged)state.root.traverse(o=>{if(o.isSkinnedMesh)headMesh=true;});
+  const headReady=headMesh && Boolean(locateHeadRegion(state.bones,1));
+  $('head-weights-fix').disabled=!headReady||state.busy;
+  $('head-weights-undo').disabled=!headWeightUndo.size||state.busy;
+  $('safe-joint-angles').checked=protectedManualRotations;
 }
 
 function editAngle(axis, value) {
@@ -1297,9 +1408,9 @@ function editAngle(axis, value) {
   const number = Number(value);
   if (!bone || state.busy || !Number.isFinite(number)) return;
   state.playing = false;
-  const e = new THREE.Euler().setFromQuaternion(bone.quaternion,'XYZ');
-  e[axis] = THREE.MathUtils.degToRad(THREE.MathUtils.clamp(number,-180,180));
-  bone.quaternion.setFromEuler(e);
+  const rest=state.bind.get(bone.uuid);
+  bone.quaternion.copy(editedBoneQuaternion(bone.quaternion,rest,axis,number,
+    bone.name,protectedManualRotations));
   state.timeline.set(bone,state.frame,bone.quaternion,state.frames);
   preview(state.frame);
   drawKeys();drawBoneList();refreshAngles();refreshControls();
@@ -1963,6 +2074,15 @@ for(const axis of ['x','y','z'])
   $('autorig-'+axis).addEventListener('change',event=>editRigCoordinate(axis,event.target.value));
 
 onButton('new-clip',()=>switchClip('new'));
+$('safe-joint-angles').addEventListener('change',e=>{
+  protectedManualRotations=e.target.checked;
+  refreshAngles();
+  alertUser(protectedManualRotations
+    ?'Защита позвоночника и головы включена. Ноль градусов — исходная поза.'
+    :'Ограничения сняты. Следи за деформацией при больших углах.');
+});
+onButton('head-weights-fix',fixBoundHeadWeights);
+onButton('head-weights-undo',undoBoundHeadWeights);
 onButton('save-action',saveActionToLibrary);
 onButton('import-animations',()=>$('animation-files').click());
 $('animation-search').addEventListener('input',drawAnimationGallery);
