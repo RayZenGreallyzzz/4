@@ -48,8 +48,8 @@ export function reinforceSkullVertex(point,indices,weights,offset,headIndex,neck
 }
 
 export function locateHeadRegion(bones,height){
-  const headIndex=bones.findIndex(b=>/^(?:mixamorig\\d*[:_]?)?head$/i.test(b.name));
-  const neckIndex=bones.findIndex(b=>/^(?:mixamorig\\d*[:_]?)?neck$/i.test(b.name));
+  const headIndex=bones.findIndex(b=>/^(?:mixamorig\d*[:_]?)?head$/i.test(b.name));
+  const neckIndex=bones.findIndex(b=>/^(?:mixamorig\d*[:_]?)?neck$/i.test(b.name));
   if(headIndex<0||neckIndex<0)return null;
   return {
     headIndex,neckIndex,
