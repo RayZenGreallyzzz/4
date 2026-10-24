@@ -27,10 +27,12 @@ import {scanLimbJoints,limbNames} from './limb-centering.js';
 import {buildLimbWeightContext,repairLimbWeightsOnMesh,diagnoseCrossLimbWeights} from './limb-weights.js';
 import {LimbWeightHeatmap} from './limb-weight-heatmap.js';
 import {LimbIsolationPreview} from './limb-isolation-preview.js';
+import {solveNativeSurface} from './native-surface-weights.js';
 import './style.css';
 
 const $ = id => document.getElementById(id);
 const NativeFileSaver = registerPlugin('NativeFileSaver');
+const NativeWeights = registerPlugin('NativeWeights');
 // Preserve lightweight source handles for optional 3D previews.
 // No 3D mannequin is kept in memory per row.
 const clipPreviewSources = new WeakMap();
@@ -902,6 +904,104 @@ function setLimbWeightHeatmap(enabled){
   $('limb-weights-map').classList.toggle('active',limbHeatmap.active);
   $('limb-weights-map').setAttribute('aria-pressed',String(limbHeatmap.active));
 }
+async function runNativeAutoskin(){
+  if(!state.root||state.busy||!state.bones.length)return;
+  if(!Capacitor.isNativePlatform()){
+    alertUser('Нативный расчёт работает только внутри Android APK.');
+    return;
+  }
+  const meshes=[];
+  state.root.traverse(obj=>{
+    if(obj.isSkinnedMesh&&obj.geometry?.getAttribute('skinWeight')&&
+      obj.geometry?.getAttribute('skinIndex'))meshes.push(obj);
+  });
+  if(!meshes.length)return alertUser('Модель ещё не привязана к скелету.');
+  const selection=$('limb-choice').value;
+  const selectedGroups=selection==='all'
+    ?['leftArm','rightArm','leftLeg','rightLeg']:[selection];
+  const total=meshes.reduce((sum,mesh)=>sum+mesh.geometry.getAttribute('position').count,0);
+  if(total*24>64*1024*1024){
+    return alertUser('Лимит памяти для отмены превышен. Нужна более лёгкая версия GLB.');
+  }
+  if(!window.confirm('Экспериментальный C++ AutoSkin: пересчитать выбранные конечности по связям полигонов? Сохрани резервный GLB. Голова и корпус не редактируются. Продолжить?'))return;
+  state.playing=false;
+  stopTailWag();
+  if(limbMotion.active)stopLimbIsolationTest();
+  if(limbHeatmap.active)setLimbWeightHeatmap(false);
+  const before=state.bones.map(b=>[b,b.quaternion.clone()]);
+  const backup=new Map();
+  const status=$('native-weights-status');
+  let changed=0,regions=0,unsupported=0;
+  state.busy=true;
+  refreshControls();
+  try{
+    const engine=await NativeWeights.info();
+    if(!engine || engine.bbw!==false)
+      throw Error('Неизвестная версия нативного движка.');
+    applySkinRestQuaternions(state.bones,state.bind);
+    state.root.updateWorldMatrix(true,true);
+    const height=Math.max(.01,new THREE.Box3().setFromObject(state.root)
+      .getSize(new THREE.Vector3()).y);
+    for(const mesh of meshes){
+      const si=mesh.geometry.getAttribute('skinIndex');
+      const sw=mesh.geometry.getAttribute('skinWeight');
+      if(si.isInterleavedBufferAttribute||sw.isInterleavedBufferAttribute){
+        unsupported++;continue;
+      }
+      // Critically use THIS mesh's skeleton ordering, not the global bones
+      // ordering; different GLBs can use a subset/permutation of bones.
+      const context=buildLimbWeightContext(mesh.skeleton?.bones,height);
+      if(!context){unsupported++;continue;}
+      let original=null;
+      for(const group of selectedGroups){
+        if(!context.groups[group])continue;
+        if(!original){
+          original={mesh,indices:si.array.slice(),weights:sw.array.slice()};
+          backup.set(mesh.uuid,original);
+        }
+        status.textContent='C++: '+(mesh.name||'меш')+' · '+group+' · обрабатывается…';
+        const result=await solveNativeSurface(NativeWeights,mesh,context,group);
+        if(result.reason){
+          status.textContent='Пропуск '+(mesh.name||'меш')+': '+result.reason;
+          unsupported++;
+        }else{
+          changed+=result.changed;
+          regions+=result.regionVertices;
+          status.textContent='C++: '+(mesh.name||'меш')+' · '+group+
+            ' · '+result.changed+' вершин, опорных '+result.seeds;
+        }
+      }
+    }
+    if(changed){
+      headWeightUndo.clear();
+      limbCenterUndo=null;
+      limbWeightUndo=backup;
+      status.textContent='Нативный расчёт завершён: '+changed+
+        ' вершин, обнаружено регионов '+regions+
+        ', пропусков '+unsupported+'. Проверь сначала одну руку/ногу. Можно отменить.';
+      alertUser('Нативные веса готовы: '+changed+' вершин. Проверь когти и стопы!');
+    }else{
+      status.textContent='Изменено 0 вершин. Нужны связная геометрия, индексированный меш и уверенное определение конечностей. Старые веса сохранены.';
+    }
+  }catch(error){
+    for(const entry of backup.values()){
+      const si=entry.mesh.geometry.getAttribute('skinIndex');
+      const sw=entry.mesh.geometry.getAttribute('skinWeight');
+      si.array.set(entry.indices);sw.array.set(entry.weights);
+      si.needsUpdate=true;sw.needsUpdate=true;
+    }
+    status.textContent='Сбой C++ AutoSkin: '+(error?.message||String(error))+
+      '. Старые веса восстановлены.';
+    alertUser('Нативный расчёт не применён: '+(error?.message||String(error)));
+  }finally{
+    for(const [bone,q] of before)bone.quaternion.copy(q);
+    state.root.updateWorldMatrix(true,true);
+    showFrame(state.frame);
+    state.busy=false;
+    refreshControls();
+  }
+}
+
 async function processLimbWeights(apply=false){
   if(!state.root||state.busy||!state.bones.length)return;
   if(limbMotion.active)stopLimbIsolationTest();
@@ -938,11 +1038,10 @@ async function processLimbWeights(apply=false){
     // models using a dynamic base only for consistent world-space distances.
     const height=Math.max(.05,new THREE.Box3().setFromObject(state.root)
       .getSize(new THREE.Vector3()).y);
-    const context=buildLimbWeightContext(state.bones,height);
-    if(!context)throw Error('Не найдены обе парные цепочки рук или ног в Mixamo-именовании.');
-    if(selection!=='all'&&!context.groups[selection])
-      throw Error('Нет нужной цепочки костей: '+selection);
     for(const mesh of meshes){
+      const context=buildLimbWeightContext(mesh.skeleton?.bones,height);
+      if(!context)continue;
+      if(selection!=='all'&&!context.groups[selection])continue;
       if(apply){
         const skinIndex=mesh.geometry.getAttribute('skinIndex');
         const skinWeight=mesh.geometry.getAttribute('skinWeight');
@@ -1717,6 +1816,7 @@ function refreshControls() {
   $('limb-weights-undo').disabled=!limbWeightUndo||state.busy;
   $('limb-weights-map').disabled=!rigged||!headMesh||state.busy;
   $('limb-weights-motion').disabled=!rigged||!headMesh||state.busy;
+  $('native-weights-run').disabled=!rigged||!headMesh||state.busy||!Capacitor.isNativePlatform();
   $('limb-weights-motion').textContent=limbMotion.active?'■ Остановить проверку':'▶ Тест: руки и ноги по очереди';
   $('head-weights-undo').disabled=!headWeightUndo.size||state.busy;
   $('safe-joint-angles').checked=protectedManualRotations;
@@ -2324,6 +2424,7 @@ onButton('limb-undo',undoLimbCenter);
 onButton('limb-weights-check',()=>processLimbWeights(false));
 onButton('limb-weights-fix',()=>processLimbWeights(true));
 onButton('limb-weights-undo',undoLimbWeights);
+onButton('native-weights-run',runNativeAutoskin);
 onButton('limb-weights-map',()=>setLimbWeightHeatmap(!limbHeatmap.active));
 onButton('limb-weights-motion',()=>{
   if(limbMotion.active){stopLimbIsolationTest();return;}
