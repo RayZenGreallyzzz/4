@@ -1,6 +1,6 @@
 {
-  "appId": "com.rayzeng.animationstudio.xrstage5",
-  "appName": "Animation Studio XR Stage 5",
+  "appId": "com.rayzeng.animationstudio.xrstage6",
+  "appName": "Animation Studio Native Test",
   "webDir": "dist",
   "server": {
     "androidScheme": "https"
