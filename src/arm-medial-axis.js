@@ -67,7 +67,7 @@ function section(points,anchor,unit,length,t,info,sign,previous,audit={}){
  const medianPoint=new THREE.Vector3(
    med(keep.map(v=>v.p.x)),med(keep.map(v=>v.p.y)),med(keep.map(v=>v.p.z))
  );
- const pU=keep.map(v=>v.p.dot(u)),pV=keep.map(v=>v.p.dot(v));
+ const pU=keep.map(v=>v.p.dot(u)),pV=keep.map(item=>item.p.dot(v));
  const center=p0.clone()
    .addScaledVector(u,med(pU)-p0.dot(u))
    .addScaledVector(v,med(pV)-p0.dot(v));
@@ -152,7 +152,7 @@ export function traceArmMedialAxis(points,info,side,roughShoulder,roughTip){
  const forearmRadius=med(mid.map(x=>x.radius));
  const distal=profile.filter(x=>x.t>=.73&&x.t<=.88);
  const narrow=distal.some(x=>x.radius<forearmRadius*.48);
- const wristT=narrow?.69:.77;
+ const wristT=narrow ? 0.69 : 0.77;
  const wrist=interpolateProfile(profile,wristT);
  // The initial shoulder can be on the surface. Use first stable arm slab
  // and extrapolate only a short step toward the torso, never to a far claw.
