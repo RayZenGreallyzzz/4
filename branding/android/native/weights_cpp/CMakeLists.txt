@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.22)
+project(nativeweights LANGUAGES CXX)
+add_library(nativeweights SHARED nativeweights.cpp)
+target_compile_features(nativeweights PRIVATE cxx_std_17)
+target_compile_options(nativeweights PRIVATE -O2 -Wall -Wextra -Werror)
