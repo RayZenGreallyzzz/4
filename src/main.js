@@ -16,6 +16,7 @@ import {appendActionClip} from './action-library.js';
 import {AnimationSelection} from './animation-selection.js';
 import { fitGuideToGeometry } from './bodyfit.js';
 import {fitAdaptiveLimbs} from './adaptive-geometry-fit.js';
+import {fitArmMedialAxes} from './arm-medial-axis.js';
 import { boneLabel, boneNameKey, boneMatchesSearch } from './bone-locale.js';
 import {readModelPlacement,setModelPlacement,resetModelPlacement} from './model-placement.js';
 import {recoverSkinBindQuaternions,applySkinRestQuaternions} from './skin-bind-rest.js';
@@ -102,6 +103,7 @@ let protectedManualRotations = true;
 const headWeightUndo = new Map();
 let limbCenterUndo=null;
 let adaptiveFitUndo=null;
+let armMedialUndo=null;
 let limbWeightUndo=null;
 const limbHeatmap=new LimbWeightHeatmap();
 let beforeHeatmapXray=false;
@@ -278,6 +280,8 @@ function refreshRigFields() {
   $('autorig-geometry-fit').disabled=!has || state.busy;
   $('autorig-adaptive-limbs').disabled=!has || state.busy;
   $('autorig-adaptive-undo').disabled=!has || state.busy || !adaptiveFitUndo;
+  $('autorig-arm-medial').disabled=!has || state.busy;
+  $('autorig-arm-medial-undo').disabled=!has || state.busy || !armMedialUndo;
   $('autorig-bind').disabled=!has || state.busy;
   $('autorig-recover').disabled=!state.root || !!state.bones.length || state.busy || !hasFitBackup();
   $('autorig-load-file').disabled=!state.root || !!state.bones.length || state.busy;
@@ -488,6 +492,7 @@ function addRigGuide(ask=false) {
     }
     state.rigGuide=guide;
     adaptiveFitUndo=null;
+    armMedialUndo=null;
     scene.add(guide.root);
     refreshGuideSkeletonHelper();
     for(const name of ['__root__',...JOINTS])makeRigMarker(name);
@@ -511,6 +516,42 @@ function addRigGuide(ask=false) {
   }
 }
 
+
+async function applyArmMedialFit(){
+ if(!state.rigGuide||!state.root||state.busy)return;
+ if(!window.confirm('Stage 8: уточнить ТОЛЬКО плечевые кости, локти и запястья по сечениям меша? Ноги, ключицы, корпус, голова и веса останутся прежними.'))return;
+ const guide=state.rigGuide;
+ const jointNames=['LeftArm','LeftForeArm','LeftHand','RightArm','RightForeArm','RightHand'].map(name=>'mixamorig'+name);
+ const previous=new Map(jointNames.map(name=>[name,jointWorld(guide,name)?.clone()]).filter(([,p])=>p));
+ const status=$('autorig-arm-medial-status');
+ state.busy=true;refreshRigFields();
+ status.textContent='Stage 8: анализирую оболочку рук (не трогаю ноги и голову)…';
+ try {
+  await new Promise(resolve=>setTimeout(resolve,30));
+  const result=fitArmMedialAxes(guide,state.root,$('autorig-direction').value);
+  armMedialUndo=previous;
+  syncRigMarkers();saveFitDraft();
+  status.textContent='Stage 8: '+result.affected.length+' суставов из 6 · '+
+   result.samples+' образцов геометрии. '+
+   Object.entries(result.details).map(([side,value])=>side+': '+value).join('; ')+
+   '. Посмотри положение точек на рентгене спереди и сбоку.';
+  alertUser('Руки уточнены: '+result.affected.length+' суставов. Ноги и корпус без изменений.');
+ } catch(error){
+  for(const [name,point] of previous)moveJointWorld(guide,name,point);
+  syncRigMarkers();
+  status.textContent='Не удалось надёжно найти ось руки: '+(error?.message||String(error))+
+   '. Старые положения сохранены.';
+  alertUser('Stage 8: не переношу кости вслепую. '+(error?.message||String(error)));
+ } finally {state.busy=false;refreshRigFields();}
+}
+function undoArmMedialFit(){
+ if(!armMedialUndo||!state.rigGuide||state.busy)return;
+ for(const [name,point] of armMedialUndo)moveJointWorld(state.rigGuide,name,point);
+ armMedialUndo=null;
+ syncRigMarkers();refreshRigFields();saveFitDraft();
+ $('autorig-arm-medial-status').textContent='Исходные позиции рук до Stage 8 восстановлены.';
+ alertUser('Подгонка рук Stage 8 отменена.');
+}
 
 function applyAdaptiveAutorig(){
  if(!state.rigGuide||!state.root||state.busy)return;
@@ -2497,6 +2538,8 @@ $('fit-file').addEventListener('change',event=>{
 onButton('autorig-geometry-fit',()=>applyGeometryFit(true));
 onButton('autorig-adaptive-limbs',applyAdaptiveAutorig);
 onButton('autorig-adaptive-undo',undoAdaptiveAutorig);
+onButton('autorig-arm-medial',applyArmMedialFit);
+onButton('autorig-arm-medial-undo',undoArmMedialFit);
 onButton('autorig-snap',()=>{
   if(!state.rigGuide)return;
   state.rigSnapMode=!state.rigSnapMode;
