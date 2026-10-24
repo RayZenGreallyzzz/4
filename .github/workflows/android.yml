@@ -1,7 +1,7 @@
-name: Build Animation Studio AutoFit Stage 7 APK
+name: Build Animation Studio ArmFit Stage 8 APK
 on:
   push:
-    branches: [main, feature/xray-side-by-side-stage1, feature/anatomical-planes-stage2, feature/head-weights-stage3, feature/limb-centering-stage4, feature/limb-weights-stage5, feature/native-autoskin-stage6, feature/adaptive-autorig-stage7]
+    branches: [main, feature/xray-side-by-side-stage1, feature/anatomical-planes-stage2, feature/head-weights-stage3, feature/limb-centering-stage4, feature/limb-weights-stage5, feature/native-autoskin-stage6, feature/adaptive-autorig-stage7, feature/arm-medial-axis-stage8]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -37,12 +37,12 @@ jobs:
         run: npx cap add android
       - name: Register native file save plugin
         run: |
-          mkdir -p android/app/src/main/java/com/rayzeng/animationstudio/xrstage7
-          sed 's/package com.rayzeng.animationstudio;/package com.rayzeng.animationstudio.xrstage7;/' branding/android/native/MainActivity.java > android/app/src/main/java/com/rayzeng/animationstudio/xrstage7/MainActivity.java
-          sed 's/package com.rayzeng.animationstudio;/package com.rayzeng.animationstudio.xrstage7;/' branding/android/native/NativeFileSaverPlugin.java > android/app/src/main/java/com/rayzeng/animationstudio/xrstage7/NativeFileSaverPlugin.java
+          mkdir -p android/app/src/main/java/com/rayzeng/animationstudio/xrstage8
+          sed 's/package com.rayzeng.animationstudio;/package com.rayzeng.animationstudio.xrstage8;/' branding/android/native/MainActivity.java > android/app/src/main/java/com/rayzeng/animationstudio/xrstage8/MainActivity.java
+          sed 's/package com.rayzeng.animationstudio;/package com.rayzeng.animationstudio.xrstage8;/' branding/android/native/NativeFileSaverPlugin.java > android/app/src/main/java/com/rayzeng/animationstudio/xrstage8/NativeFileSaverPlugin.java
       - name: Register native C++ AutoSkin bridge
         run: |
-          sed 's/package com.rayzeng.animationstudio;/package com.rayzeng.animationstudio.xrstage7;/' branding/android/native/NativeWeightsPlugin.java > android/app/src/main/java/com/rayzeng/animationstudio/xrstage7/NativeWeightsPlugin.java
+          sed 's/package com.rayzeng.animationstudio;/package com.rayzeng.animationstudio.xrstage8;/' branding/android/native/NativeWeightsPlugin.java > android/app/src/main/java/com/rayzeng/animationstudio/xrstage8/NativeWeightsPlugin.java
           mkdir -p android/app/src/main/cpp
           cp branding/android/native/weights_cpp/CMakeLists.txt android/app/src/main/cpp/CMakeLists.txt
           cp branding/android/native/weights_cpp/nativeweights.cpp android/app/src/main/cpp/nativeweights.cpp
@@ -79,6 +79,6 @@ jobs:
           ./gradlew assembleDebug --no-daemon --stacktrace
       - uses: actions/upload-artifact@v4
         with:
-          name: Animation-Studio-AutoFit-Stage7-APK
+          name: Animation-Studio-ArmFit-Stage8-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
