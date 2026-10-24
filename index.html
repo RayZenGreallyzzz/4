@@ -4,13 +4,13 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
   <meta name="theme-color" content="#090d1a"/>
-  <title>Animation Studio Native Test</title>
+  <title>Animation Studio AutoFit Test</title>
   <link rel="icon" type="image/webp" href="/favicon.webp"/>
 </head>
 <body>
 <div id="app">
   <header class="topbar">
-    <div class="brand"><div class="brand-mark">♛</div><div><strong>ANIMATION <em>STUDIO</em></strong><small>NATIVE AUTOSKIN · ЭКСПЕРИМЕНТ НА ANDROID · ОФЛАЙН</small></div></div>
+    <div class="brand"><div class="brand-mark">♛</div><div><strong>ANIMATION <em>STUDIO</em></strong><small>GEOMETRY AUTORIG · STAGE 7 · ОФЛАЙН</small></div></div>
     <div class="top-actions"><span id="file-label">Файл не выбран</span><button id="show-menu" class="toolbar-button" type="button">⌂ Меню</button><button id="toolbar-open" type="button" class="toolbar-button primary">＋ Модель</button></div>
   </header>
 
@@ -150,6 +150,8 @@
             <option value="x-">Вперёд: −X (повёрнутая модель)</option>
           </select>
           <button id="autorig-geometry-fit" type="button" class="button cyan full-width" disabled>◎ Пересчитать скелет по модели</button>
+          <button id="autorig-adaptive-limbs" type="button" class="button cyan full-width" disabled>✦ AutoFit: руки и ноги по форме модели</button>
+          <p id="autorig-adaptive-status" class="hint">Эксперимент Z.ai: геометрические срезы, оси рук, локти и колени. Голова, шея и позвоночник остаются как есть. Сначала создай скелет, затем нажми эту кнопку перед привязкой меша.</p>
         </div>
         <label class="field-label" for="autorig-selected">Сустав шаблона (или нажми на точку в 3D)</label>
         <select id="autorig-selected" class="full-width" disabled>
