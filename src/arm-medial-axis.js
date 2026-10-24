@@ -210,7 +210,15 @@ export function fitArmMedialAxes(guide,model,direction='z+'){
  for(const side of ['left','right']){
   const prop=result.proposals[side],tag=SIDE_NAMES[side];
   if(!prop.ok){details[side]=prop.reason;continue;}
+  const spine=jointWorld(guide,'mixamorigSpine2');
+  const clavicle=spine?.clone().lerp(prop.shoulder,.72);
+  if(clavicle){
+    // Clavicle junction must terminate at the REAL upper-arm height.
+    // The old Stage 7 +3.5% height offset raised it into the neck.
+    clavicle.y=prop.shoulder.y + result.info.height*.006;
+  }
   const toApply=[
+   ['mixamorig'+tag+'Shoulder',clavicle],
    ['mixamorig'+tag+'Arm',prop.shoulder],
    ['mixamorig'+tag+'ForeArm',prop.elbow],
    ['mixamorig'+tag+'Hand',prop.wrist]
@@ -218,8 +226,7 @@ export function fitArmMedialAxes(guide,model,direction='z+'){
   if(toApply.some(([name,p])=>!guide.bones.has(name)||!finite(p))){
    details[side]='отсутствуют суставы';continue;
   }
-  // Shoulder/clavicle marker remains as-is, avoiding unnecessary movement
-  // of the chest-to-shoulder attachment and head/spine.
+  // Clavicle is lowered to actual arm height; other components preserved.
   for(const [name,p] of toApply){
    moveJointWorld(guide,name,p);
    affected.push(name);
