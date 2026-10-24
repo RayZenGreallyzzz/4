@@ -7,6 +7,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(NativeFileSaverPlugin.class);
+        registerPlugin(NativeWeightsPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }
