@@ -177,14 +177,14 @@ function wwAnalyzeBody(e, t) {
       if (kn) {
         leg.kneeX = kn.xC;
         leg.kneeY = Math.min(Math.max(kneeY, ankleY + n * .07), cY - n * .05);
-        leg.kneeZ = (kn.front + kn.back) * .5 + l * Math.abs(kn.front - kn.back) * .08;
+        leg.kneeZ = kn.zC;
       }
     }
     if (leg.kneeY == null) {
       const target = ankleY + (cY - ankleY) * .52;
       let kn = null;
       for (const r2 of have) if (!kn || Math.abs(r2.y - target) < Math.abs(kn.y - target)) kn = r2;
-      if (kn) { leg.kneeX = kn.xC; leg.kneeY = target; leg.kneeZ = (kn.front + kn.back) * .5; }
+      if (kn) { leg.kneeX = kn.xC; leg.kneeY = target; leg.kneeZ = kn.zC; }
     }
     const hipRows = have.filter(r2 => r2.k <= crotchK && r2.k >= crotchK - 3);
     if (hipRows.length) {
@@ -252,7 +252,7 @@ function wwAnalyzeBody(e, t) {
     const armR = quantile(run.slice(-3).map(r2 => r2.zSpan).sort((a, b) => a - b), .5) * .5;
     let shY = res.neckY != null ? res.neckY - n * .04 : top.y + armR;
     shY = Math.min(Math.max(shY, i + n * .6), i + n * .9);
-    const shX = quantile(run.slice(-2).map(r2 => r2.inner), .5) - side * n * .012;
+    const shX = quantile(run.slice(-2).map(r2 => r2.inner), .5) - side * n * .004;
     const shZ = c * .5 + quantile(run.slice(-2).map(r2 => r2.zC), .5) * .5;
     if ((tipX - shX) * side < n * .06) continue;
     const sh3 = { x: shX, y: shY, z: shZ }, tip3 = { x: tipX, y: tipY, z: tipZ };
@@ -390,7 +390,7 @@ function ww(s, e = "z+") {
         const sh = fin(arm.shoulder), el = fin(arm.elbow), wr = fin(arm.wrist);
         if (sh) {
           P.set("mixamorig" + sd + "Arm", V3(sh.x, sh.y, sh.z));
-          P.set("mixamorig" + sd + "Shoulder", V3(o + (sh.x - o) * .55, Math.min(sh.y + n * .035, y0 + n * .93), c));
+          P.set("mixamorig" + sd + "Shoulder", V3(o + (sh.x - o) * .55, Math.min(sh.y + n * .006, y0 + n * .88), c));
           if (el) P.set("mixamorig" + sd + "ForeArm", V3(el.x, el.y, el.z));
           if (wr) P.set("mixamorig" + sd + "Hand", V3(wr.x, wr.y, wr.z));
         }
