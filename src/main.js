@@ -17,6 +17,7 @@ import {AnimationSelection} from './animation-selection.js';
 import { fitGuideToGeometry } from './bodyfit.js';
 import {fitAdaptiveLimbs} from './adaptive-geometry-fit.js';
 import {fitArmMedialAxes} from './arm-medial-axis.js';
+import {centerLowerLegAxes} from './leg-axis-correction.js';
 import { boneLabel, boneNameKey, boneMatchesSearch } from './bone-locale.js';
 import {readModelPlacement,setModelPlacement,resetModelPlacement} from './model-placement.js';
 import {recoverSkinBindQuaternions,applySkinRestQuaternions} from './skin-bind-rest.js';
@@ -104,6 +105,7 @@ const headWeightUndo = new Map();
 let limbCenterUndo=null;
 let adaptiveFitUndo=null;
 let armMedialUndo=null;
+let legCenterUndo=null;
 let limbWeightUndo=null;
 const limbHeatmap=new LimbWeightHeatmap();
 let beforeHeatmapXray=false;
@@ -282,6 +284,8 @@ function refreshRigFields() {
   $('autorig-adaptive-undo').disabled=!has || state.busy || !adaptiveFitUndo;
   $('autorig-arm-medial').disabled=!has || state.busy;
   $('autorig-arm-medial-undo').disabled=!has || state.busy || !armMedialUndo;
+  $('autorig-leg-center').disabled=!has || state.busy;
+  $('autorig-leg-center-undo').disabled=!has || state.busy || !legCenterUndo;
   $('autorig-bind').disabled=!has || state.busy;
   $('autorig-recover').disabled=!state.root || !!state.bones.length || state.busy || !hasFitBackup();
   $('autorig-load-file').disabled=!state.root || !!state.bones.length || state.busy;
@@ -493,6 +497,7 @@ function addRigGuide(ask=false) {
     state.rigGuide=guide;
     adaptiveFitUndo=null;
     armMedialUndo=null;
+    legCenterUndo=null;
     scene.add(guide.root);
     refreshGuideSkeletonHelper();
     for(const name of ['__root__',...JOINTS])makeRigMarker(name);
@@ -521,7 +526,7 @@ async function applyArmMedialFit(){
  if(!state.rigGuide||!state.root||state.busy)return;
  if(!window.confirm('Stage 8: уточнить ТОЛЬКО плечевые кости, локти и запястья по сечениям меша? Ноги, ключицы, корпус, голова и веса останутся прежними.'))return;
  const guide=state.rigGuide;
- const jointNames=['LeftArm','LeftForeArm','LeftHand','RightArm','RightForeArm','RightHand'].map(name=>'mixamorig'+name);
+ const jointNames=['LeftShoulder','LeftArm','LeftForeArm','LeftHand','RightShoulder','RightArm','RightForeArm','RightHand'].map(name=>'mixamorig'+name);
  const previous=new Map(jointNames.map(name=>[name,jointWorld(guide,name)?.clone()]).filter(([,p])=>p));
  const status=$('autorig-arm-medial-status');
  state.busy=true;refreshRigFields();
@@ -551,6 +556,41 @@ function undoArmMedialFit(){
  syncRigMarkers();refreshRigFields();saveFitDraft();
  $('autorig-arm-medial-status').textContent='Исходные позиции рук до Stage 8 восстановлены.';
  alertUser('Подгонка рук Stage 8 отменена.');
+}
+
+async function applyLegCentering(){
+ if(!state.rigGuide||!state.root||state.busy)return;
+ const guide=state.rigGuide;
+ if(!window.confirm('Stage 9: центрировать КОЛЕНИ и ГОЛЕНИ по геометрии модели? Положение таза, высота коленей, руки и голова сохраняются.'))return;
+ const names=['LeftLeg','LeftFoot','LeftToeBase','RightLeg','RightFoot','RightToeBase'].map(x=>'mixamorig'+x);
+ const previous=new Map(names.map(n=>[n,jointWorld(guide,n)?.clone()]).filter(([,p])=>p));
+ state.busy=true;refreshRigFields();
+ const status=$('autorig-leg-center-status');
+ status.textContent='Stage 9: измеряю поперечные сечения голеней…';
+ try {
+  await new Promise(resolve=>setTimeout(resolve,30));
+  const result=centerLowerLegAxes(guide,state.root,$('autorig-direction').value);
+  legCenterUndo=previous;
+  syncRigMarkers();saveFitDraft();
+  status.textContent='Stage 9: исправлено '+result.changed.length+' суставов, '+result.samples+
+   ' образцов геометрии · '+Object.entries(result.report).map(([side,msg])=>side+': '+msg).join('; ')+
+   '. Проверь рентгеном спереди и сбоку.';
+  alertUser('Подгонка голеней завершена. Таз, руки и корпус не менялись.');
+ }catch(error){
+  for(const [name,point] of previous)moveJointWorld(guide,name,point);
+  syncRigMarkers();
+  status.textContent='Не удалось уверенно выделить ноги: '+(error?.message||String(error))+
+   '. Прежние положения сохранены.';
+  alertUser('Stage 9: '+(error?.message||String(error)));
+ }finally{state.busy=false;refreshRigFields();}
+}
+function undoLegCentering(){
+ if(!legCenterUndo||!state.rigGuide||state.busy)return;
+ for(const [name,point] of legCenterUndo)moveJointWorld(state.rigGuide,name,point);
+ legCenterUndo=null;
+ syncRigMarkers();refreshRigFields();saveFitDraft();
+ $('autorig-leg-center-status').textContent='Положения коленей и стоп до Stage 9 восстановлены.';
+ alertUser('Изменения голеней отменены.');
 }
 
 function applyAdaptiveAutorig(){
@@ -2540,6 +2580,8 @@ onButton('autorig-adaptive-limbs',applyAdaptiveAutorig);
 onButton('autorig-adaptive-undo',undoAdaptiveAutorig);
 onButton('autorig-arm-medial',applyArmMedialFit);
 onButton('autorig-arm-medial-undo',undoArmMedialFit);
+onButton('autorig-leg-center',applyLegCentering);
+onButton('autorig-leg-center-undo',undoLegCentering);
 onButton('autorig-snap',()=>{
   if(!state.rigGuide)return;
   state.rigSnapMode=!state.rigSnapMode;
