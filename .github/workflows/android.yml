@@ -24,6 +24,13 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Test keyframe editor and clips
         run: npm test
+      - name: Test native C++ graph solver on host
+        run: |
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror \
+            -I"$JAVA_HOME/include" -I"$JAVA_HOME/include/linux" \
+            branding/android/native/weights_cpp/nativeweights_test.cpp \
+            -o /tmp/animation-studio-native-tests
+          /tmp/animation-studio-native-tests
       - name: Compile Animation Studio
         run: npm run build
       - name: Generate Android project
