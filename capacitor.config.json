@@ -1,6 +1,6 @@
 {
-  "appId": "com.rayzeng.animationstudio.xrstage8",
-  "appName": "Animation Studio ArmFit Test",
+  "appId": "com.rayzeng.animationstudio.xrstage9",
+  "appName": "Animation Studio JointFit Test",
   "webDir": "dist",
   "server": {
     "androidScheme": "https"
