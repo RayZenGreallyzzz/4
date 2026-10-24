@@ -106,7 +106,7 @@ function pickElbow(profile){
  let best=null,score=0;
  for(let i=2;i<profile.length-2;i++){
   const t=profile[i].t;
-  if(t<.28||t>.70)continue;
+  if(t<.30||t>.59)continue;
   const gap=profile[i+1].t-profile[i-1].t;
   if(gap>.22)continue;
   const amount=localAngle(profile[i-1].point,profile[i].point,profile[i+1].point);
