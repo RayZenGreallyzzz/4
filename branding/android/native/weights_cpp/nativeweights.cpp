@@ -77,7 +77,7 @@ static bool solveWeights(const std::vector<uint8_t>& raw,
 }
 
 extern "C" JNIEXPORT jbyteArray JNICALL
-Java_com_rayzeng_animationstudio_xrstage7_NativeWeightsPlugin_solveNative(
+Java_com_rayzeng_animationstudio_xrstage8_NativeWeightsPlugin_solveNative(
     JNIEnv* env,jclass,jbyteArray values,jbyteArray edges,
     jbyteArray fixed,jint channels,jint passes) {
     if(channels!=3||!values||!edges||!fixed)return nullptr;
