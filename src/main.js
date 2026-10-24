@@ -15,6 +15,7 @@ import { importAnimationBatch } from './animationbatch.js';
 import {appendActionClip} from './action-library.js';
 import {AnimationSelection} from './animation-selection.js';
 import { fitGuideToGeometry } from './bodyfit.js';
+import {fitAdaptiveLimbs} from './adaptive-geometry-fit.js';
 import { boneLabel, boneNameKey, boneMatchesSearch } from './bone-locale.js';
 import {readModelPlacement,setModelPlacement,resetModelPlacement} from './model-placement.js';
 import {recoverSkinBindQuaternions,applySkinRestQuaternions} from './skin-bind-rest.js';
@@ -100,6 +101,7 @@ let rigPlaneVisible = true;
 let protectedManualRotations = true;
 const headWeightUndo = new Map();
 let limbCenterUndo=null;
+let adaptiveFitUndo=null;
 let limbWeightUndo=null;
 const limbHeatmap=new LimbWeightHeatmap();
 let beforeHeatmapXray=false;
@@ -274,6 +276,8 @@ function refreshRigFields() {
   $('autorig-scale').disabled=!has;
   $('autorig-direction').disabled=!has;
   $('autorig-geometry-fit').disabled=!has || state.busy;
+  $('autorig-adaptive-limbs').disabled=!has || state.busy;
+  $('autorig-adaptive-undo').disabled=!has || state.busy || !adaptiveFitUndo;
   $('autorig-bind').disabled=!has || state.busy;
   $('autorig-recover').disabled=!state.root || !!state.bones.length || state.busy || !hasFitBackup();
   $('autorig-load-file').disabled=!state.root || !!state.bones.length || state.busy;
@@ -483,6 +487,7 @@ function addRigGuide(ask=false) {
       if(option.value && option.value!=='__root__' && !JOINTS.includes(option.value)) option.remove();
     }
     state.rigGuide=guide;
+    adaptiveFitUndo=null;
     scene.add(guide.root);
     refreshGuideSkeletonHelper();
     for(const name of ['__root__',...JOINTS])makeRigMarker(name);
@@ -504,6 +509,38 @@ function addRigGuide(ask=false) {
   }catch(error){
     alertUser('Не удалось построить шаблон: '+(error?.message||String(error)));
   }
+}
+
+
+function applyAdaptiveAutorig(){
+ if(!state.rigGuide||!state.root||state.busy)return;
+ const guide=state.rigGuide;
+ if(!window.confirm('Новая адаптивная подгонка Z.ai изменит только плечи, руки, локти, кисти, бёдра, колени и стопы. Голова, шея, позвоночник и веса меша сохраняются. Продолжить?'))return;
+ const previous=new Map([...guide.bones.keys()].map(name=>[name,jointWorld(guide,name)?.clone()]).filter(([,p])=>p));
+ try{
+  const result=fitAdaptiveLimbs(guide,state.root,$('autorig-direction').value);
+  adaptiveFitUndo=previous;
+  guide.lastFit={...(guide.lastFit||{}),direction:$('autorig-direction').value};
+  $('autorig-adaptive-status').textContent=
+   'Обработано '+result.samples+' вершин, переставлено '+result.affected.length+
+   ' суставов. '+Object.entries(result.groups).map(([g,status])=>g+': '+status).join('; ')+
+   '. Проверь рентгеном спереди и сбоку; при ошибке нажми «Отменить AutoFit».';
+  syncRigMarkers();refreshRigFields();saveFitDraft();
+  alertUser('Адаптивная подгонка: '+result.affected.length+' суставов. Голова и корпус не изменены.');
+ }catch(error){
+  for(const [name,point] of previous)moveJointWorld(guide,name,point);
+  syncRigMarkers();refreshRigFields();
+  $('autorig-adaptive-status').textContent='Подгонка не выполнена: '+(error?.message||String(error));
+  alertUser('Геометрия не распознана: '+(error?.message||String(error)));
+ }
+}
+function undoAdaptiveAutorig(){
+ if(!adaptiveFitUndo||!state.rigGuide||state.busy)return;
+ for(const [name,point] of adaptiveFitUndo)moveJointWorld(state.rigGuide,name,point);
+ adaptiveFitUndo=null;
+ syncRigMarkers();refreshRigFields();saveFitDraft();
+ $('autorig-adaptive-status').textContent='Положения суставов до AutoFit восстановлены.';
+ alertUser('Адаптивная подгонка отменена.');
 }
 
 function applyGeometryFit(ask=true) {
@@ -2458,6 +2495,8 @@ $('fit-file').addEventListener('change',event=>{
   openFitJSON(files);
 });
 onButton('autorig-geometry-fit',()=>applyGeometryFit(true));
+onButton('autorig-adaptive-limbs',applyAdaptiveAutorig);
+onButton('autorig-adaptive-undo',undoAdaptiveAutorig);
 onButton('autorig-snap',()=>{
   if(!state.rigGuide)return;
   state.rigSnapMode=!state.rigSnapMode;
