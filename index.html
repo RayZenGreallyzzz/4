@@ -4,13 +4,13 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
   <meta name="theme-color" content="#090d1a"/>
-  <title>Animation Studio XR Stage 5</title>
+  <title>Animation Studio Native Test</title>
   <link rel="icon" type="image/webp" href="/favicon.webp"/>
 </head>
 <body>
 <div id="app">
   <header class="topbar">
-    <div class="brand"><div class="brand-mark">♛</div><div><strong>ANIMATION <em>STUDIO</em></strong><small>XR ЭТАП 5 · ЧИСТЫЕ ВЕСА КОНЕЧНОСТЕЙ · ОФЛАЙН</small></div></div>
+    <div class="brand"><div class="brand-mark">♛</div><div><strong>ANIMATION <em>STUDIO</em></strong><small>NATIVE AUTOSKIN · ЭКСПЕРИМЕНТ НА ANDROID · ОФЛАЙН</small></div></div>
     <div class="top-actions"><span id="file-label">Файл не выбран</span><button id="show-menu" class="toolbar-button" type="button">⌂ Меню</button><button id="toolbar-open" type="button" class="toolbar-button primary">＋ Модель</button></div>
   </header>
 
@@ -261,6 +261,8 @@
               <button id="limb-weights-fix" type="button" class="button cyan" disabled>✓ Исправить веса</button>
             </div>
             <button id="limb-weights-undo" type="button" class="button outline full-width" disabled>↶ Отменить исправление весов</button>
+            <button id="native-weights-run" type="button" class="button cyan full-width" disabled>⚙ Нативные веса C++ (тест)</button>
+            <p id="native-weights-status" class="hint">Нативный расчёт работает только в Android APK. Обрабатывает индексированные меши до 150 000 вершин, один сегмент за другим, с сохранением исходных весов для отмены. Это тест гармонического метода по рёбрам, а не libigl BBW.</p>
             <button id="limb-weights-map" type="button" class="button violet full-width" disabled>◈ Тепловая карта весов · вкл./выкл.</button>
             <button id="limb-weights-motion" type="button" class="button outline full-width" disabled>▶ Тест: руки и ноги по очереди</button>
             <p id="limb-weights-status" class="hint" aria-live="polite">Выбери слева/справа конечность, загрузи GLB с уже привязанным скелетом. Сначала сохрани резервный GLB.</p>
