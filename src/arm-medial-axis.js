@@ -76,7 +76,7 @@ function section(points,anchor,unit,length,t,info,sign,previous,audit={}){
  const ru=(q(pU,.84)-q(pU,.16))*.5;
  const rv=(q(pV,.84)-q(pV,.16))*.5;
  const radius=Math.hypot(ru,rv);
- if(!finite(center)||radius<height*.002||radius>height*.17){audit.radius=(audit.radius||0)+1;audit.value=radius;return null;}
+ if(!finite(center)||radius<height*.002||radius>height*.17){audit.radius=(audit.radius||0)+1;audit.value=radius;audit.debug={ru,rv,pU0:pU[0],pV0:pV[0],keep:keep.length,axis:unit.toArray(),u:u.toArray(),v:v.toArray()};return null;}
  return {point:center,radius,count:keep.length,t,cloud:keep.map(x=>x.p)};
 }
 function interpolateProfile(profile,target){
@@ -142,7 +142,7 @@ export function traceArmMedialAxis(points,info,side,roughShoulder,roughTip){
   }
   if(current)profile.push(current);
  }
- if(profile.length<6)return {ok:false,reason:'недостаточно сечений руки ('+profile.length+', sparse '+(audit.sparse||0)+', radius '+(audit.radius||0)+', value '+audit.value+')'};
+ if(profile.length<6)return {ok:false,reason:'недостаточно сечений руки ('+profile.length+', sparse '+(audit.sparse||0)+', radius '+(audit.radius||0)+', value '+audit.value+', debug '+JSON.stringify(audit.debug)+')'};
  const mid=profile.filter(x=>x.t>.25&&x.t<.70);
  if(mid.length<3)return {ok:false,reason:'недостаточно данных предплечья'};
  const majorGaps=profile.slice(1).filter((x,i)=>x.t-profile[i].t>.17);
