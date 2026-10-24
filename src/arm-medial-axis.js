@@ -39,7 +39,7 @@ function perpendicular(direction){
  * radial distance from the predicted medial axis. Using trimmed quantiles
  * avoids a long claw, a spike, or an accidental torse sample dominating.
  */
-function section(points,anchor,unit,length,t,info,sign,previous){
+function section(points,anchor,unit,length,t,info,sign,previous,audit={}){
  const height=info.height;
  const [u,v]=perpendicular(unit);
  const p0=anchor.clone().addScaledVector(unit,length*t);
@@ -60,7 +60,7 @@ function section(points,anchor,unit,length,t,info,sign,previous){
   if(dd>searchRadius*searchRadius*1.5)continue;
   candidates.push({p,dd});
  }
- if(candidates.length<9)return null;
+ if(candidates.length<9){audit.sparse=(audit.sparse||0)+1;return null;}
  candidates.sort((a,b)=>a.dd-b.dd);
  // Keep a local dense cloud. This protects against merged adjacent objects.
  const keep=candidates.slice(0,Math.min(candidates.length,Math.max(24,Math.ceil(candidates.length*.76))));
@@ -76,7 +76,7 @@ function section(points,anchor,unit,length,t,info,sign,previous){
  const ru=(q(pU,.84)-q(pU,.16))*.5;
  const rv=(q(pV,.84)-q(pV,.16))*.5;
  const radius=Math.hypot(ru,rv);
- if(!finite(center)||radius<height*.002||radius>height*.17)return null;
+ if(!finite(center)||radius<height*.002||radius>height*.17){audit.radius=(audit.radius||0)+1;return null;}
  return {point:center,radius,count:keep.length,t,cloud:keep.map(x=>x.p)};
 }
 function interpolateProfile(profile,target){
@@ -129,20 +129,20 @@ export function traceArmMedialAxis(points,info,side,roughShoulder,roughTip){
  const axis=roughTip.clone().sub(roughShoulder);
  const length=axis.length(),height=info.height;
  if(!(length>height*.13 && length<height*.85))return {ok:false,reason:'неверная длина руки'};
- const unit=axis.normalize(),profile=[];
+ const unit=axis.normalize(),profile=[],audit={};
  // Avoid joining torso at 0 and claws at 1. Points lie on actual arm surface.
  for(let j=1;j<N-1;j++){
   const t=j/(N-1);
   if(t<.105||t>.89)continue;
   let current=null;
   for(let pass=0;pass<2;pass++){
-   const result=section(points,roughShoulder,unit,length,t,info,sign,current?.point);
+   const result=section(points,roughShoulder,unit,length,t,info,sign,current?.point,audit);
    if(!result)break;
    current=result;
   }
   if(current)profile.push(current);
  }
- if(profile.length<6)return {ok:false,reason:'недостаточно сечений руки ('+profile.length+')'};
+ if(profile.length<6)return {ok:false,reason:'недостаточно сечений руки ('+profile.length+', sparse '+(audit.sparse||0)+', radius '+(audit.radius||0)+')'};
  const mid=profile.filter(x=>x.t>.25&&x.t<.70);
  if(mid.length<3)return {ok:false,reason:'недостаточно данных предплечья'};
  const majorGaps=profile.slice(1).filter((x,i)=>x.t-profile[i].t>.17);
