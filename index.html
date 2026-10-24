@@ -4,13 +4,13 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
   <meta name="theme-color" content="#090d1a"/>
-  <title>Animation Studio ArmFit Test</title>
+  <title>Animation Studio JointFit Test</title>
   <link rel="icon" type="image/webp" href="/favicon.webp"/>
 </head>
 <body>
 <div id="app">
   <header class="topbar">
-    <div class="brand"><div class="brand-mark">♛</div><div><strong>ANIMATION <em>STUDIO</em></strong><small>ARM MEDIAL AUTORIG · STAGE 8 · ОФЛАЙН</small></div></div>
+    <div class="brand"><div class="brand-mark">♛</div><div><strong>ANIMATION <em>STUDIO</em></strong><small>JOINT FIT · STAGE 9 · ОФЛАЙН</small></div></div>
     <div class="top-actions"><span id="file-label">Файл не выбран</span><button id="show-menu" class="toolbar-button" type="button">⌂ Меню</button><button id="toolbar-open" type="button" class="toolbar-button primary">＋ Модель</button></div>
   </header>
 
@@ -153,10 +153,14 @@
           <button id="autorig-adaptive-limbs" type="button" class="button cyan full-width" disabled>✦ AutoFit: руки и ноги по форме модели</button>
           <button id="autorig-adaptive-undo" type="button" class="button outline full-width" disabled>↶ Отменить AutoFit конечностей</button>
           <div class="body-fit-panel">
-            <strong>↗ Stage 8 · Центрирование рук по геометрии</strong>
+            <strong>↗ Stage 9 · Руки и плечи по геометрии</strong>
             <p>Рассчитывает центральные линии предплечий по поперечным сечениям и исключает длинные когти из поиска запястья. Ноги, позвоночник, голову и веса модели не меняет. Если уверенности мало, суставы не перемещаются.</p>
-            <button id="autorig-arm-medial" type="button" class="button cyan full-width" disabled>◎ Выставить руки внутри меша</button>
+            <button id="autorig-arm-medial" type="button" class="button cyan full-width" disabled>◎ Плечи и руки внутри меша</button>
             <button id="autorig-arm-medial-undo" type="button" class="button outline full-width" disabled>↶ Отменить центрирование рук</button>
+          <p class="hint">После подгонки рук: плечевые косточки располагаются на уровне реального плечевого сустава, а не у шеи.</p>
+          <button id="autorig-leg-center" type="button" class="button cyan full-width" disabled>◎ Исправить колени и голени внутри меша</button>
+          <button id="autorig-leg-center-undo" type="button" class="button outline full-width" disabled>↶ Отменить исправление ног</button>
+          <p id="autorig-leg-center-status" class="hint">Stage 9: сохраняет высоту коленей, не меняет таз, пальцы ног, голову, корпус или руки. Если обнаружение ненадёжно, не переносит суставы.</p>
             <p id="autorig-arm-medial-status" class="hint">Сначала создай скелет и (при необходимости) используй AutoFit Stage 7, затем нажми кнопку.</p>
           </div>
           <p id="autorig-adaptive-status" class="hint">Эксперимент Z.ai: геометрические срезы, оси рук, локти и колени. Голова, шея и позвоночник остаются как есть. Сначала создай скелет, затем нажми эту кнопку перед привязкой меша.</p>
