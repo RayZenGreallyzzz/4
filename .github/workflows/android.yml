@@ -1,7 +1,7 @@
-name: Build Animation Studio XR Stage 5 APK
+name: Build Animation Studio Native Test APK
 on:
   push:
-    branches: [main, feature/xray-side-by-side-stage1, feature/anatomical-planes-stage2, feature/head-weights-stage3, feature/limb-centering-stage4, feature/limb-weights-stage5]
+    branches: [main, feature/xray-side-by-side-stage1, feature/anatomical-planes-stage2, feature/head-weights-stage3, feature/limb-centering-stage4, feature/limb-weights-stage5, feature/native-autoskin-stage6]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -30,9 +30,24 @@ jobs:
         run: npx cap add android
       - name: Register native file save plugin
         run: |
-          mkdir -p android/app/src/main/java/com/rayzeng/animationstudio/xrstage5
-          sed 's/package com.rayzeng.animationstudio;/package com.rayzeng.animationstudio.xrstage5;/' branding/android/native/MainActivity.java > android/app/src/main/java/com/rayzeng/animationstudio/xrstage5/MainActivity.java
-          sed 's/package com.rayzeng.animationstudio;/package com.rayzeng.animationstudio.xrstage5;/' branding/android/native/NativeFileSaverPlugin.java > android/app/src/main/java/com/rayzeng/animationstudio/xrstage5/NativeFileSaverPlugin.java
+          mkdir -p android/app/src/main/java/com/rayzeng/animationstudio/xrstage6
+          sed 's/package com.rayzeng.animationstudio;/package com.rayzeng.animationstudio.xrstage6;/' branding/android/native/MainActivity.java > android/app/src/main/java/com/rayzeng/animationstudio/xrstage6/MainActivity.java
+          sed 's/package com.rayzeng.animationstudio;/package com.rayzeng.animationstudio.xrstage6;/' branding/android/native/NativeFileSaverPlugin.java > android/app/src/main/java/com/rayzeng/animationstudio/xrstage6/NativeFileSaverPlugin.java
+      - name: Register native C++ AutoSkin bridge
+        run: |
+          sed 's/package com.rayzeng.animationstudio;/package com.rayzeng.animationstudio.xrstage6;/' branding/android/native/NativeWeightsPlugin.java > android/app/src/main/java/com/rayzeng/animationstudio/xrstage6/NativeWeightsPlugin.java
+          mkdir -p android/app/src/main/cpp
+          cp branding/android/native/weights_cpp/CMakeLists.txt android/app/src/main/cpp/CMakeLists.txt
+          cp branding/android/native/weights_cpp/nativeweights.cpp android/app/src/main/cpp/nativeweights.cpp
+          cat >> android/app/build.gradle <<'GRADLE'
+          android {
+              externalNativeBuild {
+                  cmake {
+                      path "src/main/cpp/CMakeLists.txt"
+                  }
+              }
+          }
+          GRADLE
       - name: Apply custom neon Animation Studio launcher icon
         run: |
           # Replace Capacitor defaults on both Android 8+ adaptive and older launchers.
@@ -57,6 +72,6 @@ jobs:
           ./gradlew assembleDebug --no-daemon --stacktrace
       - uses: actions/upload-artifact@v4
         with:
-          name: Animation-Studio-XR-Stage5-APK
+          name: Animation-Studio-Native-Test-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
