@@ -19,7 +19,7 @@ export function bytesOf(array){
 export function buildTriangleEdges(geometry,maxEdges=700000){
  const pos=geometry?.getAttribute('position');
  const ids=geometry?.index;
- if(!pos||!ids||ids.count%3!==0)return null;
+ if(!pos || (ids ? ids.count%3!==0 : pos.count%3!==0))return null;
  if(pos.count>150000)return null;
  const seen=new Set(),edges=[];
  const add=(a,b)=>{
@@ -29,11 +29,25 @@ export function buildTriangleEdges(geometry,maxEdges=700000){
   if(seen.has(key))return;
   seen.add(key);edges.push(a,b);
  };
- for(let i=0;i<ids.count;i+=3){
-  const a=ids.getX(i),b=ids.getX(i+1),c=ids.getX(i+2);
+ const total=ids?ids.count:pos.count;
+ for(let i=0;i<total;i+=3){
+  const a=ids?ids.getX(i):i,b=ids?ids.getX(i+1):i+1,c=ids?ids.getX(i+2):i+2;
   add(a,b);add(b,c);add(c,a);
   if(edges.length/2>maxEdges)throw Error('Слишком много рёбер для нативной обработки планшета');
  }
+ // Some GLBs are non-indexed: each triangle is a separate face. Weld exact
+ // coincident positions across UV seams to recover surface connectivity;
+ // never bridge merely *nearby* but physically separate fingers or feet.
+ if(!ids&&pos.count<=65000){
+  const same=new Map();
+  for(let i=0;i<pos.count;i++){
+    const key=Math.round(pos.getX(i)*1e5)+','+
+      Math.round(pos.getY(i)*1e5)+','+Math.round(pos.getZ(i)*1e5);
+    if(same.has(key))add(same.get(key),i);
+    else same.set(key,i);
+  }
+ }
+ if(edges.length/2>maxEdges)throw Error('Превышено допустимое число рёбер');
  return new Uint32Array(edges);
 }
 
