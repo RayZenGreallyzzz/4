@@ -14,7 +14,7 @@ const groups={
 };
 const finite=p=>p?.isVector3&&[p.x,p.y,p.z].every(Number.isFinite);
 const med=a=>{if(!a.length)return NaN;const x=a.slice().sort((a,b)=>a-b),m=x.length>>1;return x.length%2?x[m]:(x[m-1]+x[m])*.5;};
-const q=(a,t)=>{if(!a.length)return NaN;const s=a.slice().sort((a,b)=>a-b);const f=(s.length-1)*t,lo=Math.floor(f),hi=Math.ceil(f);return s[lo]*(hi-f)+s[hi]*(f-lo);};
+const q=(a,t)=>{if(!a.length)return NaN;const s=a.slice().sort((a,b)=>a-b);const f=(s.length-1)*t,lo=Math.floor(f),hi=Math.ceil(f);return lo===hi?s[lo]:s[lo]*(hi-f)+s[hi]*(f-lo);};
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const along=(a,b,t)=>a.clone().lerp(b,t);
 
