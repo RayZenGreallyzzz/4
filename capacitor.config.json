@@ -1,6 +1,6 @@
 {
-  "appId": "com.rayzeng.animationstudio.xrstage6",
-  "appName": "Animation Studio Native Test",
+  "appId": "com.rayzeng.animationstudio.xrstage7",
+  "appName": "Animation Studio AutoFit Test",
   "webDir": "dist",
   "server": {
     "androidScheme": "https"
