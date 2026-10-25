@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { Capacitor, registerPlugin } from '@capacitor/core';
@@ -1525,7 +1526,13 @@ async function importCharacter(files) {
       model = await new FBXLoader(refs.manager).loadAsync(url);
       clips = model.animations || [];
     } else {
-      const result = await new GLTFLoader(refs.manager).loadAsync(url);
+      // Three.js does not register Meshopt automatically. Tripo AI and
+      // gltfpack exports often require EXT_meshopt_compression.
+      // The WASM decoder is bundled with Three.js and works offline.
+      await MeshoptDecoder.ready;
+      const gltfLoader = new GLTFLoader(refs.manager);
+      gltfLoader.setMeshoptDecoder(MeshoptDecoder);
+      const result = await gltfLoader.loadAsync(url);
       model = result.scene;
       clips = result.animations || [];
     }
